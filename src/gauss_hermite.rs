@@ -35,6 +35,10 @@ pub struct GaussHermite {
 
 impl GaussHermite {
     /// Create a new n-point Gauss-Hermite rule.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
     pub fn new(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -45,39 +49,18 @@ impl GaussHermite {
             rule: QuadratureRule { nodes, weights },
         })
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on (-∞, ∞).
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(GaussHermite, nodes_doc: "Returns the nodes on (-∞, ∞).");
 
 /// Compute n Gauss-Hermite nodes and weights via Golub-Welsch.
 ///
 /// Monic physicists' Hermite recurrence:
-///   x h̃_k = h̃_{k+1} + 0·h̃_k + (k/2)·h̃_{k-1}
+///   x `h̃_k` = `h̃_{k+1}` + 0·`h̃_k` + (k/2)·`h̃_{k-1}`
 ///
 /// Jacobi matrix: diagonal = 0, off-diagonal² = (k+1)/2 for k=0..n-2.
 /// μ₀ = √π.
+#[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
 fn compute_hermite(n: usize) -> (Vec<f64>, Vec<f64>) {
     let diag = vec![0.0; n];
     let off_diag_sq: Vec<f64> = (1..n).map(|k| k as f64 / 2.0).collect();

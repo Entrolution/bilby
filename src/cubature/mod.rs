@@ -52,7 +52,7 @@ use alloc::{vec, vec::Vec};
 pub struct CubatureRule {
     /// Nodes stored flat: node i at indices [i*dim .. (i+1)*dim].
     nodes: Vec<f64>,
-    /// Weights (length = num_points).
+    /// Weights (length = `num_points`).
     weights: Vec<f64>,
     /// Spatial dimension.
     dim: usize,
@@ -62,6 +62,7 @@ impl CubatureRule {
     /// Create a new cubature rule from flat node data and weights.
     ///
     /// `nodes_flat` must have length `weights.len() * dim`.
+    #[must_use]
     pub fn new(nodes_flat: Vec<f64>, weights: Vec<f64>, dim: usize) -> Self {
         debug_assert_eq!(nodes_flat.len(), weights.len() * dim);
         Self {
@@ -73,24 +74,28 @@ impl CubatureRule {
 
     /// Number of cubature points.
     #[inline]
+    #[must_use]
     pub fn num_points(&self) -> usize {
         self.weights.len()
     }
 
     /// Spatial dimension.
     #[inline]
+    #[must_use]
     pub fn dim(&self) -> usize {
         self.dim
     }
 
     /// Access the i-th node as a slice of length `dim`.
     #[inline]
+    #[must_use]
     pub fn node(&self, i: usize) -> &[f64] {
         &self.nodes[i * self.dim..(i + 1) * self.dim]
     }
 
     /// The weights.
     #[inline]
+    #[must_use]
     pub fn weights(&self) -> &[f64] {
         &self.weights
     }
@@ -111,6 +116,11 @@ impl CubatureRule {
     /// Integrate `f` over the hyperrectangle \[lower, upper\].
     ///
     /// Applies an affine transform from the reference domain \[-1, 1\]^d.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `lower.len()` or `upper.len()` does not equal the rule's
+    /// spatial dimension.
     pub fn integrate_box<G>(&self, lower: &[f64], upper: &[f64], f: G) -> f64
     where
         G: Fn(&[f64]) -> f64,
@@ -155,6 +165,11 @@ impl CubatureRule {
     /// Parallel integration over the hyperrectangle \[lower, upper\].
     ///
     /// Identical to [`integrate_box`](Self::integrate_box) but evaluates points in parallel.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `lower.len()` or `upper.len()` does not equal the rule's
+    /// spatial dimension.
     #[cfg(feature = "parallel")]
     pub fn integrate_box_par<G>(&self, lower: &[f64], upper: &[f64], f: G) -> f64
     where

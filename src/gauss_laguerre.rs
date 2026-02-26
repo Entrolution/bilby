@@ -41,6 +41,12 @@ impl GaussLaguerre {
     /// Create a new n-point Gauss-Laguerre rule with parameter α.
     ///
     /// Requires `n >= 1`, `α > -1`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
+    /// Returns [`QuadratureError::InvalidInput`] if `alpha <= -1` or `alpha`
+    /// is NaN.
     pub fn new(n: usize, alpha: f64) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -59,42 +65,22 @@ impl GaussLaguerre {
     }
 
     /// Returns the α parameter.
+    #[must_use]
     pub fn alpha(&self) -> f64 {
         self.alpha
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on \[0, ∞).
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(GaussLaguerre, nodes_doc: "Returns the nodes on \\[0, ∞).");
 
 /// Compute n Gauss-Laguerre nodes and weights via Golub-Welsch.
 ///
 /// Monic generalised Laguerre recurrence:
-///   x L̃_k = L̃_{k+1} + (2k+1+α) L̃_k + k(k+α) L̃_{k-1}
+///   x `L̃_k` = `L̃_{k+1}` + (2k+1+α) `L̃_k` + k(k+α) `L̃_{k-1}`
 ///
 /// Jacobi matrix: diagonal = 2k+1+α, off-diagonal² = (k+1)(k+1+α).
 /// μ₀ = Γ(α+1).
+#[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
 fn compute_laguerre(n: usize, alpha: f64) -> (Vec<f64>, Vec<f64>) {
     let diag: Vec<f64> = (0..n).map(|k| 2.0 * k as f64 + 1.0 + alpha).collect();
     let off_diag_sq: Vec<f64> = (1..n)

@@ -48,6 +48,12 @@ impl GaussJacobi {
     /// Create a new n-point Gauss-Jacobi rule with parameters α and β.
     ///
     /// Requires `n >= 1`, `α > -1`, `β > -1`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
+    /// Returns [`QuadratureError::InvalidInput`] if `alpha <= -1`, `beta <= -1`,
+    /// or either parameter is NaN.
     pub fn new(n: usize, alpha: f64, beta: f64) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -67,50 +73,31 @@ impl GaussJacobi {
     }
 
     /// Returns the α parameter.
+    #[must_use]
     pub fn alpha(&self) -> f64 {
         self.alpha
     }
 
     /// Returns the β parameter.
+    #[must_use]
     pub fn beta(&self) -> f64 {
         self.beta
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on \[-1, 1\].
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(GaussJacobi, nodes_doc: "Returns the nodes on \\[-1, 1\\].");
 
 /// Compute n Gauss-Jacobi nodes and weights via the Golub-Welsch algorithm.
 ///
 /// The monic Jacobi polynomial recurrence:
-///   x p_k = p_{k+1} + α_k p_k + β_k p_{k-1}
+///   x `p_k` = `p_{k+1}` + `α_k` `p_k` + `β_k` `p_{k-1}`
 ///
 /// with:
-///   α_k = (β²-α²) / ((2k+α+β)(2k+α+β+2))
-///   β_k = 4k(k+α)(k+β)(k+α+β) / ((2k+α+β)²(2k+α+β+1)(2k+α+β-1))   for k ≥ 1
+///   `α_k` = (β²-α²) / ((2k+α+β)(2k+α+β+2))
+///   `β_k` = 4k(k+α)(k+β)(k+α+β) / ((2k+α+β)²(2k+α+β+1)(2k+α+β-1))   for k ≥ 1
 ///
 /// μ₀ = 2^(α+β+1) Γ(α+1)Γ(β+1) / Γ(α+β+2)
+#[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
 fn compute_jacobi(n: usize, alpha: f64, beta: f64) -> (Vec<f64>, Vec<f64>) {
     let ab = alpha + beta;
 
@@ -161,6 +148,7 @@ fn compute_jacobi(n: usize, alpha: f64, beta: f64) -> (Vec<f64>, Vec<f64>) {
 }
 
 #[allow(clippy::excessive_precision)]
+#[allow(clippy::cast_precision_loss)] // Loop index i is at most 8, fits exactly in f64
 /// Log-gamma function using the Lanczos approximation.
 ///
 /// Accurate to ~15 digits for positive arguments.
@@ -168,15 +156,15 @@ pub(crate) fn ln_gamma(x: f64) -> f64 {
     // Lanczos approximation with g=7, n=9
     // Coefficients from Numerical Recipes
     const COEFF: [f64; 9] = [
-        0.99999999999980993,
-        676.5203681218851,
-        -1259.1392167224028,
-        771.32342877765313,
-        -176.61502916214059,
-        12.507343278686905,
-        -0.13857109526572012,
-        9.9843695780195716e-6,
-        1.5056327351493116e-7,
+        0.999_999_999_999_809_93,
+        676.520_368_121_885_1,
+        -1_259.139_216_722_402_8,
+        771.323_428_777_653_13,
+        -176.615_029_162_140_59,
+        12.507_343_278_686_905,
+        -0.138_571_095_265_720_12,
+        9.984_369_578_019_571_6e-6,
+        1.505_632_735_149_311_6e-7,
     ];
 
     if x < 0.5 {

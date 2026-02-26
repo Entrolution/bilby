@@ -13,6 +13,34 @@ use alloc::{vec, vec::Vec};
 #[cfg(not(feature = "std"))]
 use num_traits::Float as _;
 
+/// Trait abstracting a low-discrepancy sequence for QMC integration.
+///
+/// Implemented by [`SobolSequence`] and [`HaltonSequence`].
+trait QmcSequence {
+    fn new(dim: usize) -> Result<Self, QuadratureError>
+    where
+        Self: Sized;
+    fn next_point(&mut self, point: &mut [f64]);
+}
+
+impl QmcSequence for SobolSequence {
+    fn new(dim: usize) -> Result<Self, QuadratureError> {
+        SobolSequence::new(dim)
+    }
+    fn next_point(&mut self, point: &mut [f64]) {
+        self.next_point(point);
+    }
+}
+
+impl QmcSequence for HaltonSequence {
+    fn new(dim: usize) -> Result<Self, QuadratureError> {
+        HaltonSequence::new(dim)
+    }
+    fn next_point(&mut self, point: &mut [f64]) {
+        self.next_point(point);
+    }
+}
+
 /// Monte Carlo integration method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MCMethod {
@@ -54,24 +82,34 @@ impl Default for MonteCarloIntegrator {
 
 impl MonteCarloIntegrator {
     /// Set the MC method.
+    #[must_use]
     pub fn with_method(mut self, method: MCMethod) -> Self {
         self.method = method;
         self
     }
 
     /// Set the number of samples.
+    #[must_use]
     pub fn with_samples(mut self, n: usize) -> Self {
         self.num_samples = n;
         self
     }
 
     /// Set the random seed (only used for `MCMethod::Plain`).
+    #[must_use]
     pub fn with_seed(mut self, seed: u64) -> Self {
         self.seed = seed;
         self
     }
 
     /// Integrate `f` over the hyperrectangle \[lower, upper\].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
+    /// different lengths, are empty, or if the number of samples is zero.
+    /// For Sobol and Halton methods, also returns an error if the dimension
+    /// exceeds the supported limit (40 for Sobol, 100 for Halton).
     pub fn integrate<G>(
         &self,
         lower: &[f64],
@@ -99,11 +137,19 @@ impl MonteCarloIntegrator {
 
         match self.method {
             MCMethod::Plain => self.integrate_plain(d, lower, &widths, volume, n, &f),
-            MCMethod::Sobol => self.integrate_qmc_sobol(d, lower, &widths, volume, n, &f),
-            MCMethod::Halton => self.integrate_qmc_halton(d, lower, &widths, volume, n, &f),
+            MCMethod::Sobol => {
+                self.integrate_qmc::<SobolSequence, _>(d, lower, &widths, volume, n, &f)
+            }
+            MCMethod::Halton => {
+                self.integrate_qmc::<HaltonSequence, _>(d, lower, &widths, volume, n, &f)
+            }
         }
     }
 
+    // Returns Result for API consistency with the other integrate_* methods,
+    // which may fail (e.g., Sobol dimension limit).
+    #[allow(clippy::unnecessary_wraps)]
+    #[allow(clippy::cast_precision_loss)] // usize-to-f64 casts are for sample counts, always small enough
     fn integrate_plain<G>(
         &self,
         d: usize,
@@ -145,7 +191,10 @@ impl MonteCarloIntegrator {
         })
     }
 
-    fn integrate_qmc_sobol<G>(
+    #[allow(clippy::unused_self)] // &self for API consistency with integrate_plain
+    #[allow(clippy::many_single_char_names)] // d, n, f, x, u are conventional in MC integration
+    #[allow(clippy::cast_precision_loss)] // usize-to-f64 casts are for sample counts
+    fn integrate_qmc<S, G>(
         &self,
         d: usize,
         lower: &[f64],
@@ -155,15 +204,16 @@ impl MonteCarloIntegrator {
         f: &G,
     ) -> Result<QuadratureResult<f64>, QuadratureError>
     where
+        S: QmcSequence,
         G: Fn(&[f64]) -> f64,
     {
-        let mut sob = SobolSequence::new(d)?;
+        let mut seq = S::new(d)?;
         let mut x = vec![0.0; d];
         let mut u = vec![0.0; d];
         let mut sum = 0.0;
 
         for _ in 0..n {
-            sob.next_point(&mut u);
+            seq.next_point(&mut u);
             for j in 0..d {
                 x[j] = lower[j] + widths[j] * u[j];
             }
@@ -174,63 +224,11 @@ impl MonteCarloIntegrator {
 
         // Heuristic error estimate: compare N/2 and N estimates
         let half_sum = {
-            let mut s2 = SobolSequence::new(d)?;
+            let mut seq2 = S::new(d)?;
             let half = n / 2;
             let mut sm = 0.0;
             for _ in 0..half {
-                s2.next_point(&mut u);
-                for j in 0..d {
-                    x[j] = lower[j] + widths[j] * u[j];
-                }
-                sm += f(&x);
-            }
-            volume * sm / half as f64
-        };
-
-        let error = (estimate - half_sum).abs();
-
-        Ok(QuadratureResult {
-            value: estimate,
-            error_estimate: error,
-            num_evals: n + n / 2,
-            converged: true,
-        })
-    }
-
-    fn integrate_qmc_halton<G>(
-        &self,
-        d: usize,
-        lower: &[f64],
-        widths: &[f64],
-        volume: f64,
-        n: usize,
-        f: &G,
-    ) -> Result<QuadratureResult<f64>, QuadratureError>
-    where
-        G: Fn(&[f64]) -> f64,
-    {
-        let mut hal = HaltonSequence::new(d)?;
-        let mut x = vec![0.0; d];
-        let mut u = vec![0.0; d];
-        let mut sum = 0.0;
-
-        for _ in 0..n {
-            hal.next_point(&mut u);
-            for j in 0..d {
-                x[j] = lower[j] + widths[j] * u[j];
-            }
-            sum += f(&x);
-        }
-
-        let estimate = volume * sum / n as f64;
-
-        // Heuristic error: compare N/2 and N
-        let half_sum = {
-            let mut h2 = HaltonSequence::new(d)?;
-            let half = n / 2;
-            let mut sm = 0.0;
-            for _ in 0..half {
-                h2.next_point(&mut u);
+                seq2.next_point(&mut u);
                 for j in 0..d {
                     x[j] = lower[j] + widths[j] * u[j];
                 }
@@ -256,6 +254,13 @@ impl MonteCarloIntegrator {
     /// evaluations are parallelised. For Plain MC, the sample space is split
     /// into independent chunks with separate PRNGs, giving statistically
     /// equivalent but numerically different results compared to sequential.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
+    /// different lengths, are empty, or if the number of samples is zero.
+    /// For Sobol and Halton methods, also returns an error if the dimension
+    /// exceeds the supported limit (40 for Sobol, 100 for Halton).
     #[cfg(feature = "parallel")]
     pub fn integrate_par<G>(
         &self,
@@ -284,12 +289,19 @@ impl MonteCarloIntegrator {
 
         match self.method {
             MCMethod::Plain => self.integrate_plain_par(d, lower, &widths, volume, n, &f),
-            MCMethod::Sobol => self.integrate_qmc_par_sobol(d, lower, &widths, volume, n, &f),
-            MCMethod::Halton => self.integrate_qmc_par_halton(d, lower, &widths, volume, n, &f),
+            MCMethod::Sobol => {
+                self.integrate_qmc_par::<SobolSequence, _>(d, lower, &widths, volume, n, &f)
+            }
+            MCMethod::Halton => {
+                self.integrate_qmc_par::<HaltonSequence, _>(d, lower, &widths, volume, n, &f)
+            }
         }
     }
 
+    // Returns Result for API consistency with the other integrate_*_par methods.
     #[cfg(feature = "parallel")]
+    #[allow(clippy::unnecessary_wraps)]
+    #[allow(clippy::cast_precision_loss)] // usize-to-f64 casts are for sample counts
     fn integrate_plain_par<G>(
         &self,
         d: usize,
@@ -312,7 +324,7 @@ impl MonteCarloIntegrator {
         let chunk_results: Vec<(f64, f64, usize)> = (0..num_chunks)
             .into_par_iter()
             .map(|chunk_id| {
-                let my_n = chunk_size + if chunk_id < remainder { 1 } else { 0 };
+                let my_n = chunk_size + usize::from(chunk_id < remainder);
                 if my_n == 0 {
                     return (0.0, 0.0, 0);
                 }
@@ -322,6 +334,7 @@ impl MonteCarloIntegrator {
                 let mut mean = 0.0;
                 let mut m2 = 0.0;
 
+                #[allow(clippy::cast_precision_loss)]
                 for i in 1..=my_n {
                     for j in 0..d {
                         x[j] = lower[j] + widths[j] * rng.next_f64();
@@ -333,7 +346,9 @@ impl MonteCarloIntegrator {
                     m2 += delta * delta2;
                 }
 
-                (mean * my_n as f64, m2, my_n)
+                #[allow(clippy::cast_precision_loss)]
+                let sum = mean * my_n as f64;
+                (sum, m2, my_n)
             })
             .collect();
 
@@ -347,12 +362,15 @@ impl MonteCarloIntegrator {
             total_n += count;
         }
 
+        #[allow(clippy::cast_precision_loss)]
         let mean = total_sum / total_n as f64;
+        #[allow(clippy::cast_precision_loss)]
         let variance = if total_n > 1 {
             total_m2 / (total_n - 1) as f64
         } else {
             0.0
         };
+        #[allow(clippy::cast_precision_loss)]
         let std_error = (variance / total_n as f64).sqrt() * volume;
 
         Ok(QuadratureResult {
@@ -364,7 +382,9 @@ impl MonteCarloIntegrator {
     }
 
     #[cfg(feature = "parallel")]
-    fn integrate_qmc_par_sobol<G>(
+    #[allow(clippy::unused_self)] // &self for API consistency with integrate_plain_par
+    #[allow(clippy::cast_precision_loss)] // usize-to-f64 casts are for sample counts
+    fn integrate_qmc_par<S, G>(
         &self,
         d: usize,
         lower: &[f64],
@@ -374,16 +394,17 @@ impl MonteCarloIntegrator {
         f: &G,
     ) -> Result<QuadratureResult<f64>, QuadratureError>
     where
+        S: QmcSequence,
         G: Fn(&[f64]) -> f64 + Sync,
     {
         use rayon::prelude::*;
 
-        // Pre-generate all Sobol points (sequential — gray-code is inherently serial)
-        let mut sob = SobolSequence::new(d)?;
+        // Pre-generate all points (sequential — sequences are inherently serial)
+        let mut seq = S::new(d)?;
         let mut points = vec![0.0; n * d];
         let mut u = vec![0.0; d];
         for i in 0..n {
-            sob.next_point(&mut u);
+            seq.next_point(&mut u);
             for j in 0..d {
                 points[i * d + j] = lower[j] + widths[j] * u[j];
             }
@@ -413,60 +434,25 @@ impl MonteCarloIntegrator {
             converged: true,
         })
     }
-
-    #[cfg(feature = "parallel")]
-    fn integrate_qmc_par_halton<G>(
-        &self,
-        d: usize,
-        lower: &[f64],
-        widths: &[f64],
-        volume: f64,
-        n: usize,
-        f: &G,
-    ) -> Result<QuadratureResult<f64>, QuadratureError>
-    where
-        G: Fn(&[f64]) -> f64 + Sync,
-    {
-        use rayon::prelude::*;
-
-        // Pre-generate all Halton points
-        let mut hal = HaltonSequence::new(d)?;
-        let mut points = vec![0.0; n * d];
-        let mut u = vec![0.0; d];
-        for i in 0..n {
-            hal.next_point(&mut u);
-            for j in 0..d {
-                points[i * d + j] = lower[j] + widths[j] * u[j];
-            }
-        }
-
-        // Parallel evaluation
-        let sum: f64 = (0..n)
-            .into_par_iter()
-            .map(|i| f(&points[i * d..(i + 1) * d]))
-            .sum();
-
-        let estimate = volume * sum / n as f64;
-
-        // Heuristic error
-        let half = n / 2;
-        let half_sum: f64 = (0..half)
-            .into_par_iter()
-            .map(|i| f(&points[i * d..(i + 1) * d]))
-            .sum();
-        let half_estimate = volume * half_sum / half as f64;
-        let error = (estimate - half_estimate).abs();
-
-        Ok(QuadratureResult {
-            value: estimate,
-            error_estimate: error,
-            num_evals: n + half,
-            converged: true,
-        })
-    }
 }
 
 /// Convenience: quasi-Monte Carlo integration using Sobol sequences.
+///
+/// # Example
+///
+/// ```
+/// use bilby::cubature::monte_carlo_integrate;
+///
+/// // Integral of 1 over [0,1]^3 = 1
+/// let result = monte_carlo_integrate(|_| 1.0, &[0.0; 3], &[1.0; 3], 10000).unwrap();
+/// assert!((result.value - 1.0).abs() < 0.01);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
+/// different lengths, are empty, if `num_samples` is zero, or if the
+/// dimension exceeds the Sobol sequence limit of 40.
 pub fn monte_carlo_integrate<G>(
     f: G,
     lower: &[f64],
@@ -494,9 +480,9 @@ impl Xoshiro256pp {
         let mut s = [0u64; 4];
         let mut z = seed;
         for slot in &mut s {
-            z = z.wrapping_add(0x9e3779b97f4a7c15);
-            z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
-            z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+            z = z.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
             *slot = z ^ (z >> 31);
         }
         Self { s }
@@ -516,6 +502,7 @@ impl Xoshiro256pp {
         result
     }
 
+    #[allow(clippy::cast_precision_loss)] // Shifting right by 11 keeps 53 bits, which fit exactly in f64
     fn next_f64(&mut self) -> f64 {
         // Generate a double in [0, 1) using the upper 53 bits
         (self.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)

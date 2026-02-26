@@ -52,6 +52,10 @@ impl SparseGrid {
     /// Level 0 uses a single center point. Higher levels add more points
     /// for greater accuracy. The rule is exact for polynomials of increasing
     /// total degree as the level increases.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `dim` is zero.
     pub fn new(dim: usize, level: usize, _basis: SparseGridBasis) -> Result<Self, QuadratureError> {
         if dim == 0 {
             return Err(QuadratureError::InvalidInput("dimension must be >= 1"));
@@ -62,30 +66,38 @@ impl SparseGrid {
     }
 
     /// Construct using Clenshaw-Curtis basis (convenience).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `dim` is zero.
     pub fn clenshaw_curtis(dim: usize, level: usize) -> Result<Self, QuadratureError> {
         Self::new(dim, level, SparseGridBasis::ClenshawCurtis)
     }
 
     /// Returns a reference to the underlying cubature rule.
     #[inline]
+    #[must_use]
     pub fn rule(&self) -> &CubatureRule {
         &self.rule
     }
 
     /// Number of cubature points.
     #[inline]
+    #[must_use]
     pub fn num_points(&self) -> usize {
         self.rule.num_points()
     }
 
     /// Spatial dimension.
     #[inline]
+    #[must_use]
     pub fn dim(&self) -> usize {
         self.rule.dim()
     }
 
     /// Smolyak level.
     #[inline]
+    #[must_use]
     pub fn level(&self) -> usize {
         self.level
     }
@@ -105,42 +117,9 @@ fn cc_order(level: usize) -> usize {
 
 /// Compute Clenshaw-Curtis nodes and weights for a given number of points.
 ///
-/// Returns nodes on [-1, 1] sorted ascending.
+/// Delegates to the shared implementation in [`crate::clenshaw_curtis`].
 fn cc_rule(n: usize) -> (Vec<f64>, Vec<f64>) {
-    if n == 1 {
-        return (vec![0.0], vec![2.0]);
-    }
-
-    let nm1 = n - 1;
-    let nm1_f = nm1 as f64;
-    let pi = core::f64::consts::PI;
-
-    // Nodes: cos(k*pi/(n-1)) for k=0..n-1, reversed to ascending order
-    let nodes: Vec<f64> = (0..n)
-        .map(|k| -(((nm1 - k) as f64) * pi / nm1_f).cos())
-        .collect();
-
-    // Weights via explicit formula
-    let m = nm1 / 2;
-    let mut weights = vec![0.0; n];
-    for (i, w) in weights.iter_mut().enumerate() {
-        let k = nm1 - i;
-        let mut sum = 0.0;
-        for j in 0..=m {
-            let j_f = j as f64;
-            let b_j = if j == 0 || (nm1.is_multiple_of(2) && j == m) {
-                1.0
-            } else {
-                2.0
-            };
-            let denom = 1.0 - 4.0 * j_f * j_f;
-            sum += b_j / denom * (2.0 * j_f * k as f64 * pi / nm1_f).cos();
-        }
-        let c_k = if k == 0 || k == nm1 { 1.0 } else { 2.0 };
-        *w = c_k * sum / nm1_f;
-    }
-
-    (nodes, weights)
+    crate::clenshaw_curtis::compute_clenshaw_curtis(n)
 }
 
 /// Quantise a float to an integer key for exact point merging.
@@ -148,6 +127,8 @@ fn cc_rule(n: usize) -> (Vec<f64>, Vec<f64>) {
 /// CC nodes are cos(k*pi/n) which are algebraic numbers. Using 48-bit
 /// quantisation avoids floating-point comparison issues when merging
 /// duplicate points from different tensor products.
+// x is in [-1, 1], so x * 2^48 fits in i64. The casts are intentional.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 fn quantise(x: f64) -> i64 {
     (x * (1i64 << 48) as f64).round() as i64
 }
@@ -155,9 +136,9 @@ fn quantise(x: f64) -> i64 {
 /// Build a Smolyak sparse grid using the combination technique.
 ///
 /// The Smolyak formula:
-///   Q_{q,d} = Σ_{max(q-d+1,0) ≤ |l|-d ≤ q-d} (-1)^{q-|l|+d} C(d-1, q-|l|+d) · (Q_{l_1} ⊗ ... ⊗ Q_{l_d})
+///   `Q_{q,d}` = Σ_{max(q-d+1,0) ≤ |l|-d ≤ q-d} (-1)^{q-|l|+d} C(d-1, q-|l|+d) · (`Q_{l_1}` ⊗ ... ⊗ `Q_{l_d}`)
 ///
-/// Using 0-indexed levels where l_j ≥ 0.
+/// Using 0-indexed levels where `l_j` ≥ 0.
 fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
     // Precompute CC rules for each level we'll need
     let max_level = level;
@@ -188,6 +169,8 @@ fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
 
     for s in sum_min..=sum_max {
         let diff = q - s;
+        // Binomial coefficients for sparse grid levels are small enough to fit in f64.
+        #[allow(clippy::cast_precision_loss)]
         let coeff =
             if diff.is_multiple_of(2) { 1.0 } else { -1.0 } * binomial(dim - 1, diff) as f64;
 
