@@ -45,6 +45,7 @@ pub enum GKPair {
 
 impl GKPair {
     /// Number of Kronrod nodes.
+    #[inline]
     pub fn kronrod_order(self) -> usize {
         match self {
             Self::G7K15 => 15,
@@ -56,6 +57,7 @@ impl GKPair {
     }
 
     /// Number of Gauss nodes embedded in the Kronrod rule.
+    #[inline]
     pub fn gauss_order(self) -> usize {
         match self {
             Self::G7K15 => 7,
@@ -113,6 +115,7 @@ impl GaussKronrod {
     }
 
     /// Returns the pair type.
+    #[inline]
     pub fn pair(&self) -> GKPair {
         self.pair
     }

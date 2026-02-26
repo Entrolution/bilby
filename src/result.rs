@@ -21,6 +21,7 @@ pub struct QuadratureResult<F> {
 
 impl<F: Float> QuadratureResult<F> {
     /// Returns `true` if the integration converged within tolerance.
+    #[inline]
     pub fn is_converged(&self) -> bool {
         self.converged
     }

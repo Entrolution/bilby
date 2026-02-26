@@ -67,21 +67,25 @@ impl SparseGrid {
     }
 
     /// Returns a reference to the underlying cubature rule.
+    #[inline]
     pub fn rule(&self) -> &CubatureRule {
         &self.rule
     }
 
     /// Number of cubature points.
+    #[inline]
     pub fn num_points(&self) -> usize {
         self.rule.num_points()
     }
 
     /// Spatial dimension.
+    #[inline]
     pub fn dim(&self) -> usize {
         self.rule.dim()
     }
 
     /// Smolyak level.
+    #[inline]
     pub fn level(&self) -> usize {
         self.level
     }

@@ -19,6 +19,7 @@ pub struct QuadratureRule<F> {
 
 impl<F: Float> QuadratureRule<F> {
     /// Returns the number of points in this rule.
+    #[inline]
     pub fn order(&self) -> usize {
         self.nodes.len()
     }
@@ -29,6 +30,7 @@ impl<F: Float> QuadratureRule<F> {
     ///   x = (b - a) / 2 * t + (a + b) / 2
     ///
     /// The result is scaled by (b - a) / 2.
+    #[inline]
     pub fn integrate<G>(&self, a: F, b: F, f: G) -> F
     where
         G: Fn(F) -> F,

@@ -72,26 +72,31 @@ impl CubatureRule {
     }
 
     /// Number of cubature points.
+    #[inline]
     pub fn num_points(&self) -> usize {
         self.weights.len()
     }
 
     /// Spatial dimension.
+    #[inline]
     pub fn dim(&self) -> usize {
         self.dim
     }
 
     /// Access the i-th node as a slice of length `dim`.
+    #[inline]
     pub fn node(&self, i: usize) -> &[f64] {
         &self.nodes[i * self.dim..(i + 1) * self.dim]
     }
 
     /// The weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.weights
     }
 
     /// Integrate `f` over the reference domain (assumes nodes are on \[-1, 1\]^d).
+    #[inline]
     pub fn integrate<G>(&self, f: G) -> f64
     where
         G: Fn(&[f64]) -> f64,

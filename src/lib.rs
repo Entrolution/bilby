@@ -61,6 +61,8 @@
 extern crate alloc;
 
 pub mod adaptive;
+#[cfg(feature = "std")]
+pub mod cache;
 pub mod cauchy_pv;
 pub mod clenshaw_curtis;
 pub mod cubature;

@@ -172,25 +172,31 @@ Complete the Gaussian quadrature family.
 
 **Milestone: v0.5.0** — Specialty quadrature.
 
-## Phase 5: Performance and Polish
+## Phase 5: Performance and Polish ✅
 
-### 5.1 Parallelism (`parallel` feature)
-- Parallel adaptive subdivision (evaluate subintervals concurrently)
-- Parallel node/weight generation for large n
-- Vectorised integrand batching (evaluate f at multiple points per call)
+### 5.1 Comprehensive benchmarks ✅
+- Criterion benchmarks: node generation, 1D integration, cubature
+- GL Newton/Bogaert, Golub-Welsch, Clenshaw-Curtis construction costs
+- Fixed-order, composite, GK, adaptive, tanh-sinh, oscillatory throughput
+- Tensor product, sparse grid, adaptive cubature, Monte Carlo (plain/Sobol/Halton)
 
-### 5.2 Precomputed rule caching
-- `LazyRule` / compile-time tables for common orders
-- Avoid recomputing nodes/weights in hot loops
+### 5.2 `no_std` support ✅
+- `#![cfg_attr(not(feature = "std"), no_std)]` with `alloc` for heap types
+- `default = ["std"]` feature gate; `std::error::Error` impl gated behind `std`
+- `num-traits` with `libm` feature for math functions in `no_std` mode
+- `BTreeMap` replaces `HashMap` in sparse grid for `no_std` compatibility
 
-### 5.3 `no_std` core
-- Core rule computations without alloc where feasible
-- Fixed-size rules via const generics
+### 5.3 Parallelism (`parallel` feature) ✅
+- `QuadratureRule::integrate_composite_par` — parallel panel evaluation
+- `CubatureRule::integrate_par` / `integrate_box_par` — parallel point evaluation
+- `MonteCarloIntegrator::integrate_par` — parallel MC/QMC (Sobol/Halton deterministic)
+- `GaussLegendre::new_par` — parallel node generation (Newton + Bogaert)
+- `_par` suffix convention: explicit opt-in avoids `Sync` bound on existing API
 
-### 5.4 Comprehensive benchmarks
-- Against gauss-quad, quadrature, quad_gk
-- Against SciPy/QUADPACK reference values
-- Criterion benchmarks for node generation, integration, adaptive convergence
+### 5.4 Caching and polish ✅
+- `cache` module: `LazyLock`-based precomputed GL rules (GL5–GL100)
+- `#[inline]` on all trivial getters and hot-path integration functions
+- 179 unit tests + 35 doc tests
 
 **Milestone: v1.0.0** — Production-ready.
 
