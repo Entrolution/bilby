@@ -35,13 +35,41 @@
 //! let (estimate, error) = gk.integrate(0.0, std::f64::consts::PI, f64::sin);
 //! assert!((estimate - 2.0).abs() < 1e-14);
 //! ```
+//!
+//! ## Adaptive Integration
+//!
+//! ```
+//! use bilby::adaptive_integrate;
+//!
+//! let result = adaptive_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-12).unwrap();
+//! assert!((result.value - 2.0).abs() < 1e-12);
+//! assert!(result.is_converged());
+//! ```
+//!
+//! ## Infinite Domains
+//!
+//! ```
+//! use bilby::integrate_infinite;
+//!
+//! // Integral of exp(-x^2) over (-inf, inf) = sqrt(pi)
+//! let result = integrate_infinite(|x: f64| (-x * x).exp(), 1e-10).unwrap();
+//! assert!((result.value - std::f64::consts::PI.sqrt()).abs() < 1e-8);
+//! ```
 
+pub mod adaptive;
 pub mod error;
 pub mod gauss_kronrod;
 pub mod gauss_legendre;
+pub mod result;
 pub mod rule;
+pub mod transforms;
 
+pub use adaptive::{adaptive_integrate, adaptive_integrate_with_breaks, AdaptiveIntegrator};
 pub use error::QuadratureError;
 pub use gauss_kronrod::{GKPair, GaussKronrod};
 pub use gauss_legendre::GaussLegendre;
+pub use result::QuadratureResult;
 pub use rule::QuadratureRule;
+pub use transforms::{
+    integrate_infinite, integrate_semi_infinite_lower, integrate_semi_infinite_upper,
+};
