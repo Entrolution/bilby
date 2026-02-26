@@ -57,6 +57,7 @@
 //! ```
 
 pub mod adaptive;
+pub mod cauchy_pv;
 pub mod clenshaw_curtis;
 pub mod cubature;
 pub mod error;
@@ -69,11 +70,15 @@ pub mod gauss_legendre;
 pub mod gauss_lobatto;
 pub mod gauss_radau;
 pub(crate) mod golub_welsch;
+pub mod oscillatory;
 pub mod result;
 pub mod rule;
+pub mod tanh_sinh;
 pub mod transforms;
+pub mod weighted;
 
 pub use adaptive::{adaptive_integrate, adaptive_integrate_with_breaks, AdaptiveIntegrator};
+pub use cauchy_pv::{pv_integrate, CauchyPV};
 pub use clenshaw_curtis::ClenshawCurtis;
 pub use error::QuadratureError;
 pub use gauss_chebyshev::{GaussChebyshevFirstKind, GaussChebyshevSecondKind};
@@ -84,8 +89,13 @@ pub use gauss_laguerre::GaussLaguerre;
 pub use gauss_legendre::GaussLegendre;
 pub use gauss_lobatto::GaussLobatto;
 pub use gauss_radau::GaussRadau;
+pub use oscillatory::{
+    integrate_oscillatory_cos, integrate_oscillatory_sin, OscillatoryIntegrator, OscillatoryKernel,
+};
 pub use result::QuadratureResult;
 pub use rule::QuadratureRule;
+pub use tanh_sinh::{tanh_sinh_integrate, TanhSinh};
 pub use transforms::{
     integrate_infinite, integrate_semi_infinite_lower, integrate_semi_infinite_upper,
 };
+pub use weighted::{weighted_integrate, WeightFunction, WeightedIntegrator};
