@@ -136,7 +136,7 @@ fn compute_newton(n: usize, m: usize, nodes: &mut [f64], weights: &mut [f64]) {
 
 /// Evaluate the Legendre polynomial P_n(x) and its derivative P_n'(x)
 /// using the three-term recurrence.
-fn legendre_eval(n: usize, x: f64) -> (f64, f64) {
+pub(crate) fn legendre_eval(n: usize, x: f64) -> (f64, f64) {
     let mut p_prev = 1.0; // P_0(x)
     let mut p_curr = x; // P_1(x)
 

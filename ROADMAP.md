@@ -74,31 +74,39 @@ The workhorse feature. Most real integration problems need error-driven refineme
 
 Complete the Gaussian quadrature family.
 
-### 2.1 Gauss-Jacobi
+### 2.1 Gauss-Jacobi ✅
 - Weight function (1-x)^alpha * (1+x)^beta on [-1, 1]
 - Generalises Legendre (alpha=beta=0), Chebyshev (alpha=beta=-0.5), Gegenbauer
-- Newton's method with three-term recurrence, asymptotics for large n
+- Golub-Welsch algorithm: eigenvalues of symmetric tridiagonal Jacobi matrix
+- Handles all valid parameters including the singular Chebyshev limit (alpha+beta=-1)
 
-### 2.2 Gauss-Laguerre (generalised)
+### 2.2 Gauss-Laguerre (generalised) ✅
 - Weight function x^alpha * e^(-x) on [0, inf)
-- GLR algorithm for moderate n, RH asymptotics for large n
+- Golub-Welsch algorithm via Laguerre three-term recurrence coefficients
 
-### 2.3 Gauss-Hermite
+### 2.3 Gauss-Hermite ✅
 - Weight function e^(-x^2) on (-inf, inf)
-- Three-term recurrence for moderate n, uniform asymptotics for large n
+- Golub-Welsch algorithm via physicists' Hermite recurrence coefficients
 
-### 2.4 Gauss-Chebyshev (types I and II)
+### 2.4 Gauss-Chebyshev (types I and II) ✅
 - Closed-form nodes and weights (no iteration needed)
 - Useful as comparison/baseline and for Chebyshev interpolation
 
-### 2.5 Gauss-Radau and Gauss-Lobatto
-- Include one or both endpoints in the node set
-- Important for spectral methods and ODE solvers
+### 2.5 Gauss-Radau and Gauss-Lobatto ✅
+- Gauss-Radau: Golub-Welsch with Radau modification of Legendre Jacobi matrix
+- Gauss-Lobatto: Newton on P'_{n-1}(x) using Legendre ODE second derivative
+- Left/right variants for Radau, both endpoints for Lobatto
 
-### 2.6 Clenshaw-Curtis
-- Nodes at Chebyshev points, weights via DCT
+### 2.6 Clenshaw-Curtis ✅
+- Nodes at Chebyshev extrema cos(kπ/(n-1)), weights via explicit DCT formula
 - Nested: degree doubling reuses previous evaluations
 - Competitive with Gauss for smooth functions, better for adaptive refinement
+
+### 2.7 Golub-Welsch eigenvalue solver ✅
+- Shared `pub(crate)` module: symmetric tridiagonal QL algorithm with implicit shifts
+- Radau modification via continued fraction on characteristic polynomial
+- Used by Gauss-Jacobi, Gauss-Hermite, Gauss-Laguerre, and Gauss-Radau
+- 98 unit tests + 21 doc tests
 
 **Milestone: v0.3.0** — Full classical quadrature family.
 
