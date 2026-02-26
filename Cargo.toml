@@ -1,0 +1,26 @@
+[package]
+name = "bilby"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+description = "A high-performance numerical quadrature (integration) library for Rust"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Entrolution/bilby"
+documentation = "https://docs.rs/bilby"
+readme = "README.md"
+keywords = ["quadrature", "integration", "numerical", "gauss-legendre", "scientific"]
+categories = ["mathematics", "science", "algorithms"]
+
+[lib]
+bench = false
+
+[dependencies]
+num-traits = "0.2"
+
+[dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
+approx = "0.5"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
