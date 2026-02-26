@@ -58,6 +58,7 @@
 
 pub mod adaptive;
 pub mod clenshaw_curtis;
+pub mod cubature;
 pub mod error;
 pub mod gauss_chebyshev;
 pub mod gauss_hermite;

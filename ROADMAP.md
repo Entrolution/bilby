@@ -112,28 +112,32 @@ Complete the Gaussian quadrature family.
 
 ## Phase 3: Multi-Dimensional Integration
 
-### 3.1 Tensor product rules
-- `QuadratureRule::tensor_product(rule_x, rule_y)` for 2D, generalise to N-D
-- Simple but exponential cost (curse of dimensionality)
-- Practical for d <= 4-5
+### 3.1 Tensor product rules ✅
+- `TensorProductRule::new(&[&QuadratureRule<f64>])` for mixed-order N-D rules
+- `TensorProductRule::isotropic(rule, dim)` for same rule in all dimensions
+- `CubatureRule` with flat node storage, `integrate()` and `integrate_box()` methods
+- Simple but exponential cost (curse of dimensionality); practical for d <= 4-5
 
-### 3.2 Sparse grids (Smolyak)
-- Break the curse of dimensionality for smooth integrands
-- Smolyak construction from nested 1D rules (Clenshaw-Curtis preferred)
-- `SparseGrid::new(dim, level)` -> nodes and weights
+### 3.2 Sparse grids (Smolyak) ✅
+- Smolyak combination technique from nested Clenshaw-Curtis rules
+- `SparseGrid::clenshaw_curtis(dim, level)` with quantised point merging
 - Practical for moderate dimensions (d <= ~20 for smooth functions)
+- Verified: correct point counts, weight sums, polynomial exactness
 
-### 3.3 Adaptive cubature (Genz-Malik)
-- h-adaptive: recursively subdivide the worst subregion
-- Based on the Genz-Malik 7th-degree rule for hypercubes
-- `adaptive_cubature(f, xmin, xmax, tol)` for d < 7ish
-- Vectorised integrand interface for batch evaluation
+### 3.3 Adaptive cubature (Genz-Malik) ✅
+- h-adaptive: `BinaryHeap`-based subdivision of worst subregion
+- Genz-Malik degree-7/5 embedded rule pair for error estimation
+- Fourth-difference criterion for split axis selection
+- `adaptive_cubature(f, lower, upper, tol)` convenience function
+- d=1 delegates to 1D adaptive integrator
 
-### 3.4 Monte Carlo / quasi-Monte Carlo
-- Plain MC with error estimate (1/sqrt(N) convergence)
-- Quasi-MC: Sobol, Halton sequences (better convergence for smooth functions)
-- Stratified sampling
-- These dominate for d > ~10
+### 3.4 Monte Carlo / quasi-Monte Carlo ✅
+- Plain pseudo-random MC with Welford's online variance (Xoshiro256++ PRNG)
+- Quasi-MC: Sobol sequences (gray-code enumeration, 40 dimensions, Joe-Kuo direction numbers)
+- Quasi-MC: Halton sequences (radical-inverse function, 100 primes)
+- `MonteCarloIntegrator` builder with `Plain`/`Sobol`/`Halton` methods
+- Heuristic error estimate for QMC via N/2 vs N comparison
+- 136 unit tests + 28 doc tests
 
 **Milestone: v0.4.0** — Multi-dimensional integration.
 
