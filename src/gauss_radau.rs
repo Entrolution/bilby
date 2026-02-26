@@ -13,6 +13,9 @@ use crate::error::QuadratureError;
 use crate::golub_welsch::{golub_welsch, radau_modify};
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+
 /// A Gauss-Radau quadrature rule on \[-1, 1\].
 ///
 /// # Example
@@ -64,21 +67,25 @@ impl GaussRadau {
     }
 
     /// Returns a reference to the underlying quadrature rule.
+    #[inline]
     pub fn rule(&self) -> &QuadratureRule<f64> {
         &self.rule
     }
 
     /// Returns the number of quadrature points.
+    #[inline]
     pub fn order(&self) -> usize {
         self.rule.order()
     }
 
     /// Returns the nodes on \[-1, 1\].
+    #[inline]
     pub fn nodes(&self) -> &[f64] {
         &self.rule.nodes
     }
 
     /// Returns the weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.rule.weights
     }

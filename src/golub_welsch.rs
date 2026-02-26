@@ -9,6 +9,11 @@
 //! Reference: Golub & Welsch (1969), "Calculation of Gauss Quadrature Rules",
 //! Mathematics of Computation 23(106), 221-230.
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// Compute quadrature nodes and weights from three-term recurrence coefficients.
 ///
 /// # Arguments

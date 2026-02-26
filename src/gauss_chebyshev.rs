@@ -10,10 +10,15 @@
 //!   - Nodes: `x_k = cos(k π / (n + 1))`, k = 1, ..., n
 //!   - Weights: `w_k = π / (n + 1) * sin²(k π / (n + 1))`
 
-use std::f64::consts::PI;
+use core::f64::consts::PI;
 
 use crate::error::QuadratureError;
 use crate::rule::QuadratureRule;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// Gauss-Chebyshev Type I quadrature rule.
 ///
@@ -30,7 +35,7 @@ use crate::rule::QuadratureRule;
 /// assert_eq!(gc.order(), 10);
 /// // All weights equal pi/n for Type I
 /// for &w in gc.weights() {
-///     assert!((w - std::f64::consts::PI / 10.0).abs() < 1e-14);
+///     assert!((w - core::f64::consts::PI / 10.0).abs() < 1e-14);
 /// }
 /// ```
 #[derive(Debug, Clone)]
@@ -65,21 +70,25 @@ impl GaussChebyshevFirstKind {
     }
 
     /// Returns a reference to the underlying quadrature rule.
+    #[inline]
     pub fn rule(&self) -> &QuadratureRule<f64> {
         &self.rule
     }
 
     /// Returns the number of quadrature points.
+    #[inline]
     pub fn order(&self) -> usize {
         self.rule.order()
     }
 
     /// Returns the nodes on \[-1, 1\].
+    #[inline]
     pub fn nodes(&self) -> &[f64] {
         &self.rule.nodes
     }
 
     /// Returns the weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.rule.weights
     }
@@ -130,21 +139,25 @@ impl GaussChebyshevSecondKind {
     }
 
     /// Returns a reference to the underlying quadrature rule.
+    #[inline]
     pub fn rule(&self) -> &QuadratureRule<f64> {
         &self.rule
     }
 
     /// Returns the number of quadrature points.
+    #[inline]
     pub fn order(&self) -> usize {
         self.rule.order()
     }
 
     /// Returns the nodes on \[-1, 1\].
+    #[inline]
     pub fn nodes(&self) -> &[f64] {
         &self.rule.nodes
     }
 
     /// Returns the weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.rule.weights
     }

@@ -13,6 +13,11 @@
 use crate::error::QuadratureError;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Gauss-Legendre quadrature rule.
 ///
 /// Exact for polynomials of degree 2n - 1, where n is the number of points.
@@ -48,23 +53,44 @@ impl GaussLegendre {
     }
 
     /// Returns a reference to the underlying quadrature rule.
+    #[inline]
     pub fn rule(&self) -> &QuadratureRule<f64> {
         &self.rule
     }
 
     /// Returns the number of quadrature points.
+    #[inline]
     pub fn order(&self) -> usize {
         self.rule.order()
     }
 
     /// Returns the nodes on \[-1, 1\].
+    #[inline]
     pub fn nodes(&self) -> &[f64] {
         &self.rule.nodes
     }
 
     /// Returns the weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.rule.weights
+    }
+
+    /// Create a new n-point Gauss-Legendre rule with parallel node generation.
+    ///
+    /// Only beneficial for large n (> ~1000) where the Bogaert asymptotic
+    /// path is used. For small n, the overhead of thread scheduling exceeds
+    /// the computation time.
+    #[cfg(feature = "parallel")]
+    pub fn new_par(n: usize) -> Result<Self, QuadratureError> {
+        if n == 0 {
+            return Err(QuadratureError::ZeroOrder);
+        }
+
+        let (nodes, weights) = compute_gl_pair_par(n);
+        Ok(Self {
+            rule: QuadratureRule { nodes, weights },
+        })
     }
 }
 
@@ -107,7 +133,7 @@ fn compute_newton(n: usize, m: usize, nodes: &mut [f64], weights: &mut [f64]) {
     for i in 0..m {
         // Tricomi initial guess (1-indexed: k = i + 1)
         let k = (i + 1) as f64;
-        let theta = std::f64::consts::PI * (4.0 * k - 1.0) / (4.0 * nf + 2.0);
+        let theta = core::f64::consts::PI * (4.0 * k - 1.0) / (4.0 * nf + 2.0);
         let mut x = theta.cos();
 
         // Newton iteration on P_n(x) using the three-term recurrence
@@ -199,7 +225,7 @@ fn bessel_j0_zero(k: usize) -> f64 {
         BESSEL_J0_ZEROS[k - 1]
     } else {
         // McMahon's asymptotic expansion for large zeros of J_0
-        let z = std::f64::consts::PI * (k as f64 - 0.25);
+        let z = core::f64::consts::PI * (k as f64 - 0.25);
         let r = 1.0 / z;
         let r2 = r * r;
         z + r
@@ -347,6 +373,74 @@ fn bogaert_pair(n: usize, k: usize) -> (f64, f64) {
     let weight = (2.0 * w) / deno;
 
     (theta_refined, weight)
+}
+
+/// Compute all n nodes and weights in parallel.
+///
+/// Uses the same Newton/Bogaert split as the sequential version, but
+/// parallelises the per-node computation using rayon.
+#[cfg(feature = "parallel")]
+fn compute_gl_pair_par(n: usize) -> (Vec<f64>, Vec<f64>) {
+    use rayon::prelude::*;
+
+    let m = n.div_ceil(2);
+
+    if n <= ASYMPTOTIC_THRESHOLD {
+        // Newton path: each node is independent after computing the initial guess
+        let pairs: Vec<(usize, f64, f64)> = (0..m)
+            .into_par_iter()
+            .map(|i| {
+                let k = (i + 1) as f64;
+                let nf = n as f64;
+                let theta = core::f64::consts::PI * (4.0 * k - 1.0) / (4.0 * nf + 2.0);
+                let mut x = theta.cos();
+
+                for _ in 0..100 {
+                    let (p_n, p_n_deriv) = legendre_eval(n, x);
+                    let dx = -p_n / p_n_deriv;
+                    x += dx;
+                    if dx.abs() < 2.0 * f64::EPSILON * x.abs().max(1.0) {
+                        break;
+                    }
+                }
+
+                let (_, p_n_deriv) = legendre_eval(n, x);
+                let w = 2.0 / ((1.0 - x * x) * p_n_deriv * p_n_deriv);
+                (i, x, w)
+            })
+            .collect();
+
+        let mut nodes = vec![0.0_f64; n];
+        let mut weights = vec![0.0_f64; n];
+        for (i, x, w) in pairs {
+            nodes[n - 1 - i] = x;
+            weights[n - 1 - i] = w;
+            nodes[i] = -x;
+            weights[i] = w;
+        }
+        (nodes, weights)
+    } else {
+        // Bogaert path: embarrassingly parallel
+        let pairs: Vec<(usize, f64, f64)> = (0..m)
+            .into_par_iter()
+            .map(|i| {
+                let (theta, weight) = bogaert_pair(n, i + 1);
+                (i, theta.cos(), weight)
+            })
+            .collect();
+
+        let mut nodes = vec![0.0_f64; n];
+        let mut weights = vec![0.0_f64; n];
+        for (i, x, w) in pairs {
+            nodes[n - 1 - i] = x;
+            weights[n - 1 - i] = w;
+            if i != n - 1 - i {
+                nodes[i] = -x;
+                weights[i] = w;
+            }
+        }
+        (nodes, weights)
+    }
 }
 
 /// Compute GL nodes/weights via Bogaert's asymptotic expansion.
@@ -504,7 +598,7 @@ mod tests {
     #[test]
     fn integrate_sin_on_zero_to_pi() {
         let gl = GaussLegendre::new(20).unwrap();
-        let result = gl.rule().integrate(0.0, std::f64::consts::PI, f64::sin);
+        let result = gl.rule().integrate(0.0, core::f64::consts::PI, f64::sin);
         assert!((result - 2.0).abs() < 1e-13, "got {result}, expected 2.0");
     }
 
@@ -551,5 +645,39 @@ mod tests {
                 "n={n}: got {result}, expected 2/3"
             );
         }
+    }
+
+    /// Parallel node generation matches sequential for both Newton and Bogaert paths.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn new_par_matches_sequential() {
+        for n in [5, 50, 100, 200, 1000] {
+            let seq = GaussLegendre::new(n).unwrap();
+            let par = GaussLegendre::new_par(n).unwrap();
+            for i in 0..n {
+                let node_err = (seq.nodes()[i] - par.nodes()[i]).abs();
+                let weight_err = (seq.weights()[i] - par.weights()[i]).abs();
+                assert!(node_err < 1e-15, "n={n}, i={i}: node diff = {node_err}");
+                assert!(
+                    weight_err < 1e-15,
+                    "n={n}, i={i}: weight diff = {weight_err}"
+                );
+            }
+        }
+    }
+
+    /// Parallel composite integration matches sequential.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn composite_par_matches_sequential() {
+        let gl = GaussLegendre::new(5).unwrap();
+        let f = |x: f64| x.sin();
+        let seq = gl
+            .rule()
+            .integrate_composite(0.0, core::f64::consts::PI, 100, f);
+        let par = gl
+            .rule()
+            .integrate_composite_par(0.0, core::f64::consts::PI, 100, f);
+        assert!((seq - par).abs() < 1e-14, "seq={seq}, par={par}");
     }
 }

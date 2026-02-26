@@ -38,6 +38,9 @@ pub use monte_carlo::{monte_carlo_integrate, MCMethod, MonteCarloIntegrator};
 pub use sparse_grid::{SparseGrid, SparseGridBasis};
 pub use tensor::TensorProductRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+
 /// A precomputed multi-dimensional cubature rule.
 ///
 /// Nodes are stored in a flat layout: node `i` occupies
@@ -69,26 +72,31 @@ impl CubatureRule {
     }
 
     /// Number of cubature points.
+    #[inline]
     pub fn num_points(&self) -> usize {
         self.weights.len()
     }
 
     /// Spatial dimension.
+    #[inline]
     pub fn dim(&self) -> usize {
         self.dim
     }
 
     /// Access the i-th node as a slice of length `dim`.
+    #[inline]
     pub fn node(&self, i: usize) -> &[f64] {
         &self.nodes[i * self.dim..(i + 1) * self.dim]
     }
 
     /// The weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.weights
     }
 
     /// Integrate `f` over the reference domain (assumes nodes are on \[-1, 1\]^d).
+    #[inline]
     pub fn integrate<G>(&self, f: G) -> f64
     where
         G: Fn(&[f64]) -> f64,
@@ -126,6 +134,54 @@ impl CubatureRule {
         }
         sum * jacobian
     }
+
+    /// Parallel integration over the reference domain \[-1, 1\]^d.
+    ///
+    /// Identical to [`integrate`](Self::integrate) but evaluates points in parallel.
+    #[cfg(feature = "parallel")]
+    pub fn integrate_par<G>(&self, f: G) -> f64
+    where
+        G: Fn(&[f64]) -> f64 + Sync,
+    {
+        use rayon::prelude::*;
+
+        let d = self.dim;
+        (0..self.num_points())
+            .into_par_iter()
+            .map(|i| self.weights[i] * f(&self.nodes[i * d..(i + 1) * d]))
+            .sum()
+    }
+
+    /// Parallel integration over the hyperrectangle \[lower, upper\].
+    ///
+    /// Identical to [`integrate_box`](Self::integrate_box) but evaluates points in parallel.
+    #[cfg(feature = "parallel")]
+    pub fn integrate_box_par<G>(&self, lower: &[f64], upper: &[f64], f: G) -> f64
+    where
+        G: Fn(&[f64]) -> f64 + Sync,
+    {
+        use rayon::prelude::*;
+
+        assert_eq!(lower.len(), self.dim);
+        assert_eq!(upper.len(), self.dim);
+
+        let d = self.dim;
+        let half_widths: Vec<f64> = (0..d).map(|j| 0.5 * (upper[j] - lower[j])).collect();
+        let midpoints: Vec<f64> = (0..d).map(|j| 0.5 * (lower[j] + upper[j])).collect();
+        let jacobian: f64 = half_widths.iter().product();
+
+        let sum: f64 = (0..self.num_points())
+            .into_par_iter()
+            .map(|i| {
+                let node = &self.nodes[i * d..(i + 1) * d];
+                let x: Vec<f64> = (0..d)
+                    .map(|j| half_widths[j] * node[j] + midpoints[j])
+                    .collect();
+                self.weights[i] * f(&x)
+            })
+            .sum();
+        sum * jacobian
+    }
 }
 
 #[cfg(test)]
@@ -148,5 +204,35 @@ mod tests {
         let rule = CubatureRule::new(vec![0.0, 0.0], vec![4.0], 2);
         let result = rule.integrate_box(&[0.0, 0.0], &[2.0, 3.0], |_| 1.0);
         assert!((result - 6.0).abs() < 1e-14); // area = 2*3 = 6
+    }
+
+    /// Parallel integrate matches sequential on reference domain.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn integrate_par_matches_sequential() {
+        use crate::cubature::TensorProductRule;
+        use crate::GaussLegendre;
+
+        let gl = GaussLegendre::new(10).unwrap();
+        let tp = TensorProductRule::isotropic(gl.rule(), 3).unwrap();
+        let f = |x: &[f64]| (x[0] * x[1] + x[2]).sin();
+        let seq = tp.rule().integrate(&f);
+        let par = tp.rule().integrate_par(&f);
+        assert!((seq - par).abs() < 1e-14, "seq={seq}, par={par}");
+    }
+
+    /// Parallel integrate_box matches sequential.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn integrate_box_par_matches_sequential() {
+        use crate::cubature::TensorProductRule;
+        use crate::GaussLegendre;
+
+        let gl = GaussLegendre::new(10).unwrap();
+        let tp = TensorProductRule::isotropic(gl.rule(), 2).unwrap();
+        let f = |x: &[f64]| x[0] * x[1];
+        let seq = tp.rule().integrate_box(&[0.0, 0.0], &[1.0, 1.0], &f);
+        let par = tp.rule().integrate_box_par(&[0.0, 0.0], &[1.0, 1.0], &f);
+        assert!((seq - par).abs() < 1e-14, "seq={seq}, par={par}");
     }
 }

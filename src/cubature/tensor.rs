@@ -7,6 +7,9 @@ use crate::cubature::CubatureRule;
 use crate::error::QuadratureError;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+
 /// A tensor-product cubature rule formed from 1D quadrature rules.
 ///
 /// # Example
@@ -80,16 +83,19 @@ impl TensorProductRule {
     }
 
     /// Returns a reference to the underlying cubature rule.
+    #[inline]
     pub fn rule(&self) -> &CubatureRule {
         &self.rule
     }
 
     /// Number of cubature points.
+    #[inline]
     pub fn num_points(&self) -> usize {
         self.rule.num_points()
     }
 
     /// Spatial dimension.
+    #[inline]
     pub fn dim(&self) -> usize {
         self.rule.dim()
     }

@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 //! # bilby
 //!
 //! A high-performance numerical quadrature (integration) library for Rust.
@@ -12,6 +13,14 @@
 //! - **Precomputed rules** — generate nodes and weights once, integrate many times
 //! - **No heap allocation on hot paths** — rule construction allocates, integration does not
 //! - **Separate 1D and N-D APIs** — `Fn(F) -> F` for 1D, `Fn(&[F]) -> F` for N-D
+//! - **`no_std` compatible** — works without the standard library (with `alloc`)
+//!
+//! ## Feature Flags
+//!
+//! | Feature | Default | Description |
+//! |---------|---------|-------------|
+//! | `std` | Yes | Enables `std::error::Error` impl and [`cache`] module |
+//! | `parallel` | No | Enables rayon-based `_par` methods (implies `std`) |
 //!
 //! ## Quick Start
 //!
@@ -32,7 +41,7 @@
 //! use bilby::{GaussKronrod, GKPair};
 //!
 //! let gk = GaussKronrod::new(GKPair::G7K15);
-//! let (estimate, error) = gk.integrate(0.0, std::f64::consts::PI, f64::sin);
+//! let (estimate, error) = gk.integrate(0.0, core::f64::consts::PI, f64::sin);
 //! assert!((estimate - 2.0).abs() < 1e-14);
 //! ```
 //!
@@ -41,7 +50,7 @@
 //! ```
 //! use bilby::adaptive_integrate;
 //!
-//! let result = adaptive_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-12).unwrap();
+//! let result = adaptive_integrate(|x: f64| x.sin(), 0.0, core::f64::consts::PI, 1e-12).unwrap();
 //! assert!((result.value - 2.0).abs() < 1e-12);
 //! assert!(result.is_converged());
 //! ```
@@ -53,10 +62,44 @@
 //!
 //! // Integral of exp(-x^2) over (-inf, inf) = sqrt(pi)
 //! let result = integrate_infinite(|x: f64| (-x * x).exp(), 1e-10).unwrap();
-//! assert!((result.value - std::f64::consts::PI.sqrt()).abs() < 1e-8);
+//! assert!((result.value - core::f64::consts::PI.sqrt()).abs() < 1e-8);
+//! ```
+//!
+//! ## Multi-Dimensional Integration
+//!
+//! ```
+//! use bilby::cubature::{TensorProductRule, adaptive_cubature};
+//! use bilby::GaussLegendre;
+//!
+//! // Tensor product: 10-point GL in each of 2 dimensions
+//! let gl = GaussLegendre::new(10).unwrap();
+//! let tp = TensorProductRule::isotropic(gl.rule(), 2).unwrap();
+//! let result = tp.rule().integrate_box(
+//!     &[0.0, 0.0], &[1.0, 1.0],
+//!     |x| x[0] * x[1],
+//! );
+//! assert!((result - 0.25).abs() < 1e-14);
+//! ```
+//!
+//! ## Precomputed Rule Cache
+//!
+//! Available when the `std` feature is enabled (default):
+//!
+//! ```
+//! # #[cfg(feature = "std")] {
+//! use bilby::cache::GL10;
+//!
+//! let result = GL10.rule().integrate(0.0, 1.0, |x: f64| x * x);
+//! assert!((result - 1.0 / 3.0).abs() < 1e-14);
+//! # }
 //! ```
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 pub mod adaptive;
+#[cfg(feature = "std")]
+pub mod cache;
 pub mod cauchy_pv;
 pub mod clenshaw_curtis;
 pub mod cubature;

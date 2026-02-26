@@ -12,6 +12,11 @@ use crate::gauss_jacobi::ln_gamma;
 use crate::golub_welsch::golub_welsch;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Gauss-Laguerre quadrature rule.
 ///
 /// Integrates `f(x) * x^α * e^(-x)` over \[0, ∞) using n points.
@@ -59,21 +64,25 @@ impl GaussLaguerre {
     }
 
     /// Returns a reference to the underlying quadrature rule.
+    #[inline]
     pub fn rule(&self) -> &QuadratureRule<f64> {
         &self.rule
     }
 
     /// Returns the number of quadrature points.
+    #[inline]
     pub fn order(&self) -> usize {
         self.rule.order()
     }
 
     /// Returns the nodes on \[0, ∞).
+    #[inline]
     pub fn nodes(&self) -> &[f64] {
         &self.rule.nodes
     }
 
     /// Returns the weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.rule.weights
     }

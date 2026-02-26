@@ -10,12 +10,18 @@
 //! ```
 //! use bilby::adaptive_integrate;
 //!
-//! let result = adaptive_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-10).unwrap();
+//! let result = adaptive_integrate(|x: f64| x.sin(), 0.0, core::f64::consts::PI, 1e-10).unwrap();
 //! assert!((result.value - 2.0).abs() < 1e-10);
 //! assert!(result.is_converged());
 //! ```
 
-use std::cmp::Ordering;
+use core::cmp::Ordering;
+
+#[cfg(not(feature = "std"))]
+use alloc::collections::BinaryHeap;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(feature = "std")]
 use std::collections::BinaryHeap;
 
 use crate::error::QuadratureError;
@@ -372,7 +378,7 @@ mod tests {
     /// Integral of sin(x) over [0, pi] = 2.
     #[test]
     fn sin_integral() {
-        let r = adaptive_integrate(f64::sin, 0.0, std::f64::consts::PI, 1e-12).unwrap();
+        let r = adaptive_integrate(f64::sin, 0.0, core::f64::consts::PI, 1e-12).unwrap();
         assert!(r.converged);
         assert!((r.value - 2.0).abs() < 1e-12, "value={}", r.value);
     }
@@ -389,8 +395,8 @@ mod tests {
     /// Reversed bounds should negate the result.
     #[test]
     fn reversed_bounds() {
-        let forward = adaptive_integrate(f64::sin, 0.0, std::f64::consts::PI, 1e-12).unwrap();
-        let reverse = adaptive_integrate(f64::sin, std::f64::consts::PI, 0.0, 1e-12).unwrap();
+        let forward = adaptive_integrate(f64::sin, 0.0, core::f64::consts::PI, 1e-12).unwrap();
+        let reverse = adaptive_integrate(f64::sin, core::f64::consts::PI, 0.0, 1e-12).unwrap();
         assert!(
             (forward.value + reverse.value).abs() < 1e-12,
             "forward={}, reverse={}",
@@ -450,7 +456,7 @@ mod tests {
             .with_abs_tol(1e-14)
             .with_rel_tol(1e-14)
             .with_max_evals(100_000)
-            .integrate(0.0, std::f64::consts::PI, f64::sin)
+            .integrate(0.0, core::f64::consts::PI, f64::sin)
             .unwrap();
         assert!(r.converged, "err={}", r.error_estimate);
         assert!((r.value - 2.0).abs() < 1e-14, "value={}", r.value);

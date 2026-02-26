@@ -20,6 +20,9 @@
 use crate::error::QuadratureError;
 use crate::result::QuadratureResult;
 
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// Builder for tanh-sinh (double-exponential) quadrature.
 ///
 /// # Example
@@ -93,7 +96,7 @@ impl TanhSinh {
 
         let mid = 0.5 * (a + b);
         let half = 0.5 * (b - a);
-        let pi_2 = std::f64::consts::FRAC_PI_2;
+        let pi_2 = core::f64::consts::FRAC_PI_2;
 
         let mut total_evals = 0usize;
         let mut prev_estimate: f64 = 0.0;
@@ -305,7 +308,7 @@ mod tests {
         // ∫₀¹ 1/√(x(1-x)) dx = π
         let result = tanh_sinh_integrate(|x| 1.0 / (x * (1.0 - x)).sqrt(), 0.0, 1.0, 1e-8).unwrap();
         assert!(
-            (result.value - std::f64::consts::PI).abs() < 1e-6,
+            (result.value - core::f64::consts::PI).abs() < 1e-6,
             "value={}",
             result.value
         );
@@ -316,7 +319,7 @@ mod tests {
         // ∫₋₁¹ 1/√(1-x²) dx = π
         let result = tanh_sinh_integrate(|x| 1.0 / (1.0 - x * x).sqrt(), -1.0, 1.0, 1e-8).unwrap();
         assert!(
-            (result.value - std::f64::consts::PI).abs() < 1e-6,
+            (result.value - core::f64::consts::PI).abs() < 1e-6,
             "value={}",
             result.value
         );
@@ -325,7 +328,7 @@ mod tests {
     #[test]
     fn sin_integral() {
         // ∫₀^π sin(x) dx = 2  (smooth, sanity check)
-        let result = tanh_sinh_integrate(|x| x.sin(), 0.0, std::f64::consts::PI, 1e-10).unwrap();
+        let result = tanh_sinh_integrate(|x| x.sin(), 0.0, core::f64::consts::PI, 1e-10).unwrap();
         assert!((result.value - 2.0).abs() < 1e-8, "value={}", result.value);
     }
 

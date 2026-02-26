@@ -2,6 +2,9 @@
 
 use num_traits::Float;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// A precomputed quadrature rule on the reference interval \[-1, 1\].
 ///
 /// Stores nodes and weights that can be reused across many integrations.
@@ -16,6 +19,7 @@ pub struct QuadratureRule<F> {
 
 impl<F: Float> QuadratureRule<F> {
     /// Returns the number of points in this rule.
+    #[inline]
     pub fn order(&self) -> usize {
         self.nodes.len()
     }
@@ -26,6 +30,7 @@ impl<F: Float> QuadratureRule<F> {
     ///   x = (b - a) / 2 * t + (a + b) / 2
     ///
     /// The result is scaled by (b - a) / 2.
+    #[inline]
     pub fn integrate<G>(&self, a: F, b: F, f: G) -> F
     where
         G: Fn(F) -> F,
@@ -60,5 +65,30 @@ impl<F: Float> QuadratureRule<F> {
             total = total + self.integrate(panel_a, panel_b, &f);
         }
         total
+    }
+
+    /// Parallel composite integration over \[a, b\] with `n_panels` subintervals.
+    ///
+    /// Identical to [`integrate_composite`](Self::integrate_composite) but evaluates
+    /// panels in parallel using rayon. Requires `F: Send + Sync` and `f: Fn(F) -> F + Sync`.
+    #[cfg(feature = "parallel")]
+    pub fn integrate_composite_par<G>(&self, a: F, b: F, n_panels: usize, f: G) -> F
+    where
+        F: Send + Sync,
+        G: Fn(F) -> F + Sync,
+    {
+        use rayon::prelude::*;
+
+        let n = F::from(n_panels).unwrap();
+        let panel_width = (b - a) / n;
+
+        (0..n_panels)
+            .into_par_iter()
+            .map(|i| {
+                let panel_a = a + F::from(i).unwrap() * panel_width;
+                let panel_b = panel_a + panel_width;
+                self.integrate(panel_a, panel_b, &f)
+            })
+            .reduce(F::zero, |a, b| a + b)
     }
 }

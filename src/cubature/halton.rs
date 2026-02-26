@@ -5,6 +5,9 @@
 
 use crate::error::QuadratureError;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// First 100 primes for Halton sequence bases.
 const PRIMES: [u32; 100] = [
     2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
@@ -92,6 +95,9 @@ fn radical_inverse(mut n: u64, base: u32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(feature = "std"))]
+    use alloc::vec;
 
     #[test]
     fn first_few_points() {

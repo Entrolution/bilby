@@ -16,6 +16,11 @@ use crate::error::QuadratureError;
 use crate::golub_welsch::golub_welsch;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Gauss-Jacobi quadrature rule.
 ///
 /// # Example
@@ -30,7 +35,7 @@ use crate::rule::QuadratureRule;
 /// // Weight sum = integral of (1-x)^alpha * (1+x)^beta over [-1,1]
 /// // For alpha=beta=0.5: B(1.5, 1.5) * 2^2 = pi/2
 /// let sum: f64 = gj.weights().iter().sum();
-/// assert!((sum - std::f64::consts::PI / 2.0).abs() < 1e-12);
+/// assert!((sum - core::f64::consts::PI / 2.0).abs() < 1e-12);
 /// ```
 #[derive(Debug, Clone)]
 pub struct GaussJacobi {
@@ -72,21 +77,25 @@ impl GaussJacobi {
     }
 
     /// Returns a reference to the underlying quadrature rule.
+    #[inline]
     pub fn rule(&self) -> &QuadratureRule<f64> {
         &self.rule
     }
 
     /// Returns the number of quadrature points.
+    #[inline]
     pub fn order(&self) -> usize {
         self.rule.order()
     }
 
     /// Returns the nodes on \[-1, 1\].
+    #[inline]
     pub fn nodes(&self) -> &[f64] {
         &self.rule.nodes
     }
 
     /// Returns the weights.
+    #[inline]
     pub fn weights(&self) -> &[f64] {
         &self.rule.weights
     }
@@ -144,7 +153,7 @@ fn compute_jacobi(n: usize, alpha: f64, beta: f64) -> (Vec<f64>, Vec<f64>) {
         .collect();
 
     // μ₀ = 2^(ab+1) Γ(α+1)Γ(β+1) / Γ(ab+2)
-    let mu0 = ((ab + 1.0) * std::f64::consts::LN_2 + ln_gamma(alpha + 1.0) + ln_gamma(beta + 1.0)
+    let mu0 = ((ab + 1.0) * core::f64::consts::LN_2 + ln_gamma(alpha + 1.0) + ln_gamma(beta + 1.0)
         - ln_gamma(ab + 2.0))
     .exp();
 
@@ -173,7 +182,7 @@ pub(crate) fn ln_gamma(x: f64) -> f64 {
     if x < 0.5 {
         // Reflection formula
         let z = 1.0 - x;
-        std::f64::consts::PI.ln() - (std::f64::consts::PI * x).sin().ln() - ln_gamma(z)
+        core::f64::consts::PI.ln() - (core::f64::consts::PI * x).sin().ln() - ln_gamma(z)
     } else {
         let z = x - 1.0;
         let mut sum = COEFF[0];
@@ -181,14 +190,14 @@ pub(crate) fn ln_gamma(x: f64) -> f64 {
             sum += c / (z + i as f64);
         }
         let t = z + 7.5; // g + 0.5
-        0.5 * (2.0 * std::f64::consts::PI).ln() + (t.ln() * (z + 0.5)) - t + sum.ln()
+        0.5 * (2.0 * core::f64::consts::PI).ln() + (t.ln() * (z + 0.5)) - t + sum.ln()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts::PI;
+    use core::f64::consts::PI;
 
     #[test]
     fn zero_order() {
@@ -231,7 +240,7 @@ mod tests {
     /// Helper: integral of (1-x)^a (1+x)^b over [-1,1].
     fn jacobi_integral(a: f64, b: f64) -> f64 {
         let log_val =
-            (a + b + 1.0) * std::f64::consts::LN_2 + ln_gamma(a + 1.0) + ln_gamma(b + 1.0)
+            (a + b + 1.0) * core::f64::consts::LN_2 + ln_gamma(a + 1.0) + ln_gamma(b + 1.0)
                 - ln_gamma(a + b + 2.0);
         log_val.exp()
     }
