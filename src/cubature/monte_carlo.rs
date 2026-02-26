@@ -649,10 +649,6 @@ mod tests {
         let result = integrator
             .integrate_par(&[0.0, 0.0], &[1.0, 1.0], |x| x[0] * x[1])
             .unwrap();
-        assert!(
-            (result.value - 0.25).abs() < 0.05,
-            "value={}",
-            result.value
-        );
+        assert!((result.value - 0.25).abs() < 0.05, "value={}", result.value);
     }
 }

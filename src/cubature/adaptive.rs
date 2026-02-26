@@ -10,13 +10,13 @@
 use core::cmp::Ordering;
 
 #[cfg(not(feature = "std"))]
+use alloc::collections::BinaryHeap;
+#[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
 #[cfg(not(feature = "std"))]
-use alloc::collections::BinaryHeap;
+use num_traits::Float as _;
 #[cfg(feature = "std")]
 use std::collections::BinaryHeap;
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
 
 use crate::error::QuadratureError;
 use crate::result::QuadratureResult;

@@ -672,11 +672,12 @@ mod tests {
     fn composite_par_matches_sequential() {
         let gl = GaussLegendre::new(5).unwrap();
         let f = |x: f64| x.sin();
-        let seq = gl.rule().integrate_composite(0.0, core::f64::consts::PI, 100, f);
-        let par = gl.rule().integrate_composite_par(0.0, core::f64::consts::PI, 100, f);
-        assert!(
-            (seq - par).abs() < 1e-14,
-            "seq={seq}, par={par}"
-        );
+        let seq = gl
+            .rule()
+            .integrate_composite(0.0, core::f64::consts::PI, 100, f);
+        let par = gl
+            .rule()
+            .integrate_composite_par(0.0, core::f64::consts::PI, 100, f);
+        assert!((seq - par).abs() < 1e-14, "seq={seq}, par={par}");
     }
 }

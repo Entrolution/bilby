@@ -249,7 +249,10 @@ fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
     pairs.sort_by(|a, b| {
         a.0.iter()
             .zip(b.0.iter())
-            .find_map(|(x, y)| x.partial_cmp(y).filter(|o| *o != core::cmp::Ordering::Equal))
+            .find_map(|(x, y)| {
+                x.partial_cmp(y)
+                    .filter(|o| *o != core::cmp::Ordering::Equal)
+            })
             .unwrap_or(core::cmp::Ordering::Equal)
     });
 

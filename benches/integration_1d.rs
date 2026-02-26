@@ -28,12 +28,8 @@ fn bench_composite_gl(c: &mut Criterion) {
             &panels,
             |b, &panels| {
                 b.iter(|| {
-                    gl.rule().integrate_composite(
-                        0.0,
-                        std::f64::consts::PI,
-                        panels,
-                        |x: f64| x.sin(),
-                    )
+                    gl.rule()
+                        .integrate_composite(0.0, std::f64::consts::PI, panels, |x: f64| x.sin())
                 });
             },
         );
@@ -55,20 +51,21 @@ fn bench_gk_pairs(c: &mut Criterion) {
 fn bench_adaptive(c: &mut Criterion) {
     let mut group = c.benchmark_group("adaptive");
     group.bench_function("smooth_sin", |b| {
-        b.iter(|| {
-            adaptive_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-10).unwrap()
-        });
+        b.iter(|| adaptive_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-10).unwrap());
     });
     group.bench_function("peaked", |b| {
         b.iter(|| {
-            adaptive_integrate(|x: f64| 1.0 / (1.0 + (x - 0.3).powi(2) * 1e4), 0.0, 1.0, 1e-8)
-                .unwrap()
+            adaptive_integrate(
+                |x: f64| 1.0 / (1.0 + (x - 0.3).powi(2) * 1e4),
+                0.0,
+                1.0,
+                1e-8,
+            )
+            .unwrap()
         });
     });
     group.bench_function("singular_sqrt", |b| {
-        b.iter(|| {
-            adaptive_integrate(|x: f64| 1.0 / x.sqrt(), 1e-15, 1.0, 1e-8).unwrap()
-        });
+        b.iter(|| adaptive_integrate(|x: f64| 1.0 / x.sqrt(), 1e-15, 1.0, 1e-8).unwrap());
     });
     group.finish();
 }
@@ -76,9 +73,7 @@ fn bench_adaptive(c: &mut Criterion) {
 fn bench_tanh_sinh(c: &mut Criterion) {
     let mut group = c.benchmark_group("tanh_sinh");
     group.bench_function("smooth_sin", |b| {
-        b.iter(|| {
-            tanh_sinh_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-10).unwrap()
-        });
+        b.iter(|| tanh_sinh_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-10).unwrap());
     });
     group.bench_function("singular_sqrt", |b| {
         b.iter(|| tanh_sinh_integrate(|x: f64| 1.0 / x.sqrt(), 0.0, 1.0, 1e-8).unwrap());

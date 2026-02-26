@@ -210,8 +210,8 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn integrate_par_matches_sequential() {
-        use crate::GaussLegendre;
         use crate::cubature::TensorProductRule;
+        use crate::GaussLegendre;
 
         let gl = GaussLegendre::new(10).unwrap();
         let tp = TensorProductRule::isotropic(gl.rule(), 3).unwrap();
@@ -225,8 +225,8 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn integrate_box_par_matches_sequential() {
-        use crate::GaussLegendre;
         use crate::cubature::TensorProductRule;
+        use crate::GaussLegendre;
 
         let gl = GaussLegendre::new(10).unwrap();
         let tp = TensorProductRule::isotropic(gl.rule(), 2).unwrap();

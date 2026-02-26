@@ -27,9 +27,7 @@ fn bench_tensor_product(c: &mut Criterion) {
         b.iter(|| {
             tp_3d
                 .rule()
-                .integrate_box(&[0.0, 0.0, 0.0], &[1.0, 1.0, 1.0], |x| {
-                    x[0] * x[1] * x[2]
-                })
+                .integrate_box(&[0.0, 0.0, 0.0], &[1.0, 1.0, 1.0], |x| x[0] * x[1] * x[2])
         });
     });
 
@@ -44,20 +42,16 @@ fn bench_sparse_grid(c: &mut Criterion) {
         b.iter(|| {
             sg_3_3
                 .rule()
-                .integrate_box(&[0.0; 3], &[1.0; 3], |x| {
-                    (x[0] + x[1] + x[2]).exp()
-                })
+                .integrate_box(&[0.0; 3], &[1.0; 3], |x| (x[0] + x[1] + x[2]).exp())
         });
     });
 
     let sg_5_3 = SparseGrid::clenshaw_curtis(5, 3).unwrap();
     group.bench_function("d5_l3", |b| {
         b.iter(|| {
-            sg_5_3
-                .rule()
-                .integrate_box(&[0.0; 5], &[1.0; 5], |x| {
-                    (x[0] + x[1] + x[2] + x[3] + x[4]).exp()
-                })
+            sg_5_3.rule().integrate_box(&[0.0; 5], &[1.0; 5], |x| {
+                (x[0] + x[1] + x[2] + x[3] + x[4]).exp()
+            })
         });
     });
 
