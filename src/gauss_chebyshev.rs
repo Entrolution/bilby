@@ -45,6 +45,11 @@ pub struct GaussChebyshevFirstKind {
 
 impl GaussChebyshevFirstKind {
     /// Create a new n-point Gauss-Chebyshev Type I rule.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
+    #[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
     pub fn new(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -68,31 +73,9 @@ impl GaussChebyshevFirstKind {
             rule: QuadratureRule { nodes, weights },
         })
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on \[-1, 1\].
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(GaussChebyshevFirstKind, nodes_doc: "Returns the nodes on \\[-1, 1\\].");
 
 /// Gauss-Chebyshev Type II quadrature rule.
 ///
@@ -113,6 +96,11 @@ pub struct GaussChebyshevSecondKind {
 
 impl GaussChebyshevSecondKind {
     /// Create a new n-point Gauss-Chebyshev Type II rule.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
+    #[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
     pub fn new(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -137,31 +125,9 @@ impl GaussChebyshevSecondKind {
             rule: QuadratureRule { nodes, weights },
         })
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on \[-1, 1\].
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(GaussChebyshevSecondKind, nodes_doc: "Returns the nodes on \\[-1, 1\\].");
 
 #[cfg(test)]
 mod tests {

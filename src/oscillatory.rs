@@ -60,6 +60,7 @@ pub struct OscillatoryIntegrator {
 
 impl OscillatoryIntegrator {
     /// Create a new oscillatory integrator.
+    #[must_use]
     pub fn new(kernel: OscillatoryKernel, omega: f64) -> Self {
         Self {
             kernel,
@@ -71,24 +72,36 @@ impl OscillatoryIntegrator {
     }
 
     /// Set the Chebyshev expansion order.
+    #[must_use]
     pub fn with_order(mut self, n: usize) -> Self {
         self.order = n;
         self
     }
 
     /// Set absolute tolerance.
+    #[must_use]
     pub fn with_abs_tol(mut self, tol: f64) -> Self {
         self.abs_tol = tol;
         self
     }
 
     /// Set relative tolerance.
+    #[must_use]
     pub fn with_rel_tol(mut self, tol: f64) -> Self {
         self.rel_tol = tol;
         self
     }
 
     /// Integrate f(x)·kernel(ω·x) over \[a, b\].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
+    /// is NaN. May also propagate errors from the adaptive fallback when
+    /// `|omega * (b - a) / 2|` is small.
+    #[allow(clippy::many_single_char_names)] // a, b, f, n are conventional in quadrature
+    #[allow(clippy::similar_names)] // sum_c_half / sum_s_half are intentionally parallel names
+    #[allow(clippy::cast_precision_loss)] // k, n are small quadrature indices, always exact in f64
     pub fn integrate<G>(
         &self,
         a: f64,
@@ -220,9 +233,10 @@ impl OscillatoryIntegrator {
 
 /// Compute Chebyshev coefficients from function values at CC nodes.
 ///
-/// Given f_k = f(cos(kπ/n)) for k = 0, ..., n, computes the coefficients
-/// c_j such that f(t) ≈ Σ c_j T_j(t) (with the convention that c_0 and
-/// c_n are halved).
+/// Given `f_k` = f(cos(kπ/n)) for k = 0, ..., n, computes the coefficients
+/// `c_j` such that f(t) ≈ Σ `c_j` `T_j(t)` (with the convention that `c_0` and
+/// `c_n` are halved).
+#[allow(clippy::cast_precision_loss)] // j, k, n are small Chebyshev indices, always exact in f64
 fn chebyshev_coefficients(f_vals: &[f64], n: usize) -> Vec<f64> {
     let mut coeffs = vec![0.0; n + 1];
     let pi_n = core::f64::consts::PI / n as f64;
@@ -245,13 +259,15 @@ fn chebyshev_coefficients(f_vals: &[f64], n: usize) -> Vec<f64> {
 
 /// Compute modified Chebyshev moments via Gauss-Legendre quadrature.
 ///
-/// Returns (μ_j^c, μ_j^s) for j = 0, ..., n where:
-///   μ_j^c = ∫₋₁¹ T_j(x) cos(θx) dx
-///   μ_j^s = ∫₋₁¹ T_j(x) sin(θx) dx
+/// Returns (`μ_j^c`, `μ_j^s`) for j = 0, ..., n where:
+///   `μ_j^c` = ∫₋₁¹ `T_j(x)` cos(θx) dx
+///   `μ_j^s` = ∫₋₁¹ `T_j(x)` sin(θx) dx
 ///
 /// Uses GL quadrature with enough nodes to resolve both the Chebyshev
 /// polynomial (degree j ≤ n) and the oscillatory kernel (effective
 /// frequency ~θ). Converges exponentially for these smooth integrands.
+#[allow(clippy::cast_precision_loss)] // j, n are small Chebyshev indices, always exact in f64
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // theta.abs().ceil() is a small positive integer, safe to cast to usize
 fn modified_chebyshev_moments(theta: f64, n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut mc = vec![0.0; n + 1];
     let mut ms = vec![0.0; n + 1];
@@ -306,6 +322,21 @@ fn modified_chebyshev_moments(theta: f64, n: usize) -> (Vec<f64>, Vec<f64>) {
 }
 
 /// Convenience: integrate f(x)·sin(ωx) over \[a, b\].
+///
+/// # Example
+///
+/// ```
+/// use bilby::integrate_oscillatory_sin;
+///
+/// let exact = (1.0 - 100.0_f64.cos()) / 100.0;
+/// let result = integrate_oscillatory_sin(|_| 1.0, 0.0, 1.0, 100.0, 1e-10).unwrap();
+/// assert!((result.value - exact).abs() < 1e-8);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
+/// is NaN.
 pub fn integrate_oscillatory_sin<G>(
     f: G,
     a: f64,
@@ -323,6 +354,21 @@ where
 }
 
 /// Convenience: integrate f(x)·cos(ωx) over \[a, b\].
+///
+/// # Example
+///
+/// ```
+/// use bilby::integrate_oscillatory_cos;
+///
+/// let exact = 50.0_f64.sin() / 50.0;
+/// let result = integrate_oscillatory_cos(|_| 1.0, 0.0, 1.0, 50.0, 1e-10).unwrap();
+/// assert!((result.value - exact).abs() < 1e-8);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
+/// is NaN.
 pub fn integrate_oscillatory_cos<G>(
     f: G,
     a: f64,

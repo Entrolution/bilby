@@ -53,24 +53,33 @@ impl Default for AdaptiveCubature {
 
 impl AdaptiveCubature {
     /// Set absolute tolerance.
+    #[must_use]
     pub fn with_abs_tol(mut self, tol: f64) -> Self {
         self.abs_tol = tol;
         self
     }
 
     /// Set relative tolerance.
+    #[must_use]
     pub fn with_rel_tol(mut self, tol: f64) -> Self {
         self.rel_tol = tol;
         self
     }
 
     /// Set maximum number of function evaluations.
+    #[must_use]
     pub fn with_max_evals(mut self, n: usize) -> Self {
         self.max_evals = n;
         self
     }
 
     /// Adaptively integrate `f` over the hyperrectangle \[lower, upper\].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
+    /// different lengths or are empty. Returns [`QuadratureError::DegenerateInterval`]
+    /// if any bound is NaN.
     pub fn integrate<G>(
         &self,
         lower: &[f64],
@@ -123,10 +132,7 @@ impl AdaptiveCubature {
         while global_error > self.abs_tol.max(self.rel_tol * global_estimate.abs())
             && total_evals < self.max_evals
         {
-            let worst = match heap.pop() {
-                Some(r) => r,
-                None => break,
-            };
+            let Some(worst) = heap.pop() else { break };
 
             global_estimate -= worst.estimate;
             global_error -= worst.error;
@@ -176,6 +182,22 @@ impl AdaptiveCubature {
 }
 
 /// Convenience: adaptive cubature with default settings.
+///
+/// # Example
+///
+/// ```
+/// use bilby::cubature::adaptive_cubature;
+///
+/// // Integral of x*y over [0,1]^2 = 1/4
+/// let result = adaptive_cubature(|x| x[0] * x[1], &[0.0, 0.0], &[1.0, 1.0], 1e-10).unwrap();
+/// assert!((result.value - 0.25).abs() < 1e-10);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
+/// different lengths or are empty. Returns [`QuadratureError::DegenerateInterval`]
+/// if any bound is NaN.
 pub fn adaptive_cubature<G>(
     f: G,
     lower: &[f64],
@@ -254,6 +276,8 @@ where
     let lambda4 = (9.0_f64 / 10.0).sqrt();
     let lambda5 = (9.0_f64 / 19.0).sqrt();
 
+    // Dimension is bounded by practical limits (d <= ~7), so this cast is safe.
+    #[allow(clippy::cast_precision_loss)]
     let d_f = d as f64;
 
     // Weights for degree-7 rule (scaled for [-1,1]^d)
@@ -261,7 +285,8 @@ where
     let w2 = 980.0 / 6561.0;
     let w3 = (1820.0 - 400.0 * d_f) / 19683.0;
     let w4 = 200.0 / 19683.0;
-    let w5 = 6859.0 / 19683.0 / (1 << d) as f64;
+    // d is bounded by practical limits (d <= ~7), so (1 << d) fits in i32.
+    let w5 = 6859.0 / 19683.0 / f64::from(1i32 << d);
 
     // Weights for degree-5 rule
     let wp1 = (729.0 - 950.0 * d_f + 50.0 * d_f * d_f) / 729.0;
@@ -355,8 +380,7 @@ where
         .iter()
         .enumerate()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(Ordering::Equal))
-        .map(|(i, _)| i)
-        .unwrap_or(0);
+        .map_or(0, |(i, _)| i);
 
     GMDetail {
         estimate: est7,

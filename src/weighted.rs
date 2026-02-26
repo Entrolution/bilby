@@ -59,6 +59,10 @@ pub struct WeightedIntegrator {
 
 impl WeightedIntegrator {
     /// Create a new weighted integrator.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `order` is zero.
     pub fn new(weight: WeightFunction, order: usize) -> Result<Self, QuadratureError> {
         if order == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -67,6 +71,7 @@ impl WeightedIntegrator {
     }
 
     /// Set the quadrature order.
+    #[must_use]
     pub fn with_order(mut self, n: usize) -> Self {
         self.order = n;
         self
@@ -78,7 +83,14 @@ impl WeightedIntegrator {
     /// - Laguerre: \[0, ∞)
     /// - Hermite: (-∞, ∞)
     /// - ChebyshevI/II: \[-1, 1\]
-    /// - LogWeight: (0, 1\]
+    /// - `LogWeight`: (0, 1\]
+    ///
+    /// # Panics
+    ///
+    /// Panics if the [`WeightFunction::Jacobi`] parameters are invalid
+    /// (`alpha <= -1` or `beta <= -1`) or if the [`WeightFunction::Laguerre`]
+    /// parameter is invalid (`alpha <= -1`), since the underlying quadrature
+    /// rule construction will fail.
     pub fn integrate<G>(&self, f: G) -> f64
     where
         G: Fn(f64) -> f64,
@@ -147,7 +159,7 @@ impl WeightedIntegrator {
     /// Integrate f(x) · w(x) over \[a, b\] via affine transform.
     ///
     /// Only applicable for finite-domain weights (Jacobi, ChebyshevI/II).
-    /// For LogWeight, maps (0, 1\] to (a, b\] with the log singularity at a.
+    /// For `LogWeight`, maps (0, 1\] to (a, b\] with the log singularity at a.
     /// For Laguerre/Hermite, a and b are ignored (uses natural domain).
     pub fn integrate_over<G>(&self, a: f64, b: f64, f: G) -> f64
     where
@@ -182,6 +194,20 @@ impl WeightedIntegrator {
 }
 
 /// Convenience: integrate f(x) · w(x) over the natural domain.
+///
+/// # Example
+///
+/// ```
+/// use bilby::weighted::{weighted_integrate, WeightFunction};
+///
+/// // Integral of 1/sqrt(1-x^2) over [-1,1] = pi
+/// let result = weighted_integrate(|_| 1.0, WeightFunction::ChebyshevI, 20).unwrap();
+/// assert!((result - core::f64::consts::PI).abs() < 1e-12);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::ZeroOrder`] if `order` is zero.
 pub fn weighted_integrate<G>(
     f: G,
     weight: WeightFunction,
@@ -293,5 +319,102 @@ mod tests {
     #[test]
     fn zero_order() {
         assert!(weighted_integrate(|_| 1.0, WeightFunction::Hermite, 0).is_err());
+    }
+
+    #[test]
+    fn integrate_over_jacobi_legendre_on_0_2() {
+        // Jacobi(0,0) is Legendre weight w(x)=1.
+        // integrate_over maps [-1,1] to [0,2] via affine transform with Jacobian (b-a)/2 = 1.
+        // ∫₀² x² dx = 8/3
+        let wi = WeightedIntegrator::new(
+            WeightFunction::Jacobi {
+                alpha: 0.0,
+                beta: 0.0,
+            },
+            20,
+        )
+        .unwrap();
+        let result = wi.integrate_over(0.0, 2.0, |x| x * x);
+        assert!(
+            (result - 8.0 / 3.0).abs() < 1e-10,
+            "result={result}, expected={}",
+            8.0 / 3.0
+        );
+    }
+
+    #[test]
+    fn integrate_over_jacobi_legendre_on_1_3() {
+        // ∫₁³ x dx = (9 - 1)/2 = 4
+        let wi = WeightedIntegrator::new(
+            WeightFunction::Jacobi {
+                alpha: 0.0,
+                beta: 0.0,
+            },
+            10,
+        )
+        .unwrap();
+        let result = wi.integrate_over(1.0, 3.0, |x| x);
+        assert!((result - 4.0).abs() < 1e-10, "result={result}");
+    }
+
+    #[test]
+    fn integrate_over_chebyshev_i_on_0_2() {
+        // ChebyshevI weight: w(t) = 1/√(1-t²) on [-1,1].
+        // integrate_over(0, 2, f) maps t -> x = t + 1, so x ∈ [0,2].
+        // Result = half * ∫₋₁¹ f(half*t + mid) / √(1-t²) dt
+        //   where half = 1, mid = 1.
+        // With f(x) = 1: result = 1 * ∫₋₁¹ 1/√(1-t²) dt = π
+        let wi = WeightedIntegrator::new(WeightFunction::ChebyshevI, 20).unwrap();
+        let result = wi.integrate_over(0.0, 2.0, |_| 1.0);
+        assert!(
+            (result - core::f64::consts::PI).abs() < 1e-10,
+            "result={result}"
+        );
+    }
+
+    #[test]
+    fn integrate_over_chebyshev_ii_on_0_2() {
+        // ChebyshevII weight: w(t) = √(1-t²) on [-1,1].
+        // integrate_over(0, 2, f=1) = half * ∫₋₁¹ √(1-t²) dt = 1 * π/2
+        let wi = WeightedIntegrator::new(WeightFunction::ChebyshevII, 20).unwrap();
+        let result = wi.integrate_over(0.0, 2.0, |_| 1.0);
+        assert!(
+            (result - core::f64::consts::FRAC_PI_2).abs() < 1e-10,
+            "result={result}"
+        );
+    }
+
+    #[test]
+    fn integrate_over_laguerre_ignores_bounds() {
+        // Laguerre uses its natural domain [0,∞); bounds are ignored.
+        let wi = WeightedIntegrator::new(WeightFunction::Laguerre { alpha: 0.0 }, 10).unwrap();
+        let natural = wi.integrate(|_| 1.0);
+        let remapped = wi.integrate_over(5.0, 10.0, |_| 1.0);
+        assert!(
+            (natural - remapped).abs() < 1e-14,
+            "natural={natural}, remapped={remapped}"
+        );
+    }
+
+    #[test]
+    fn integrate_over_hermite_ignores_bounds() {
+        // Hermite uses its natural domain (-∞,∞); bounds are ignored.
+        let wi = WeightedIntegrator::new(WeightFunction::Hermite, 10).unwrap();
+        let natural = wi.integrate(|_| 1.0);
+        let remapped = wi.integrate_over(5.0, 10.0, |_| 1.0);
+        assert!(
+            (natural - remapped).abs() < 1e-14,
+            "natural={natural}, remapped={remapped}"
+        );
+    }
+
+    #[test]
+    fn integrate_over_log_weight_on_0_2() {
+        // LogWeight: integrate_over(0, 2, f) = width * integrate(|u| f(a + width*u))
+        //   = 2 * ∫₀¹ -ln(u) · f(2u) du
+        // With f(x) = 1: result = 2 * ∫₀¹ -ln(u) du = 2 * 1 = 2
+        let wi = WeightedIntegrator::new(WeightFunction::LogWeight, 20).unwrap();
+        let result = wi.integrate_over(0.0, 2.0, |_| 1.0);
+        assert!((result - 2.0).abs() < 1e-10, "result={result}");
     }
 }

@@ -55,24 +55,35 @@ impl Default for TanhSinh {
 
 impl TanhSinh {
     /// Set the maximum number of refinement levels.
+    #[must_use]
     pub fn with_max_levels(mut self, levels: usize) -> Self {
         self.max_levels = levels;
         self
     }
 
     /// Set absolute tolerance.
+    #[must_use]
     pub fn with_abs_tol(mut self, tol: f64) -> Self {
         self.abs_tol = tol;
         self
     }
 
     /// Set relative tolerance.
+    #[must_use]
     pub fn with_rel_tol(mut self, tol: f64) -> Self {
         self.rel_tol = tol;
         self
     }
 
     /// Integrate `f` over [a, b] using the tanh-sinh transform.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::DegenerateInterval`] if `a` or `b` is NaN.
+    #[allow(clippy::many_single_char_names)] // a, b, f, h, k, t, u are conventional in tanh-sinh quadrature
+    #[allow(clippy::cast_precision_loss)] // k is a small loop index, always exact in f64
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // (7.0/h).ceil() is a small positive value, safe to cast to usize
+    #[allow(clippy::too_many_lines)] // single cohesive level-doubling loop, splitting would obscure the algorithm
     pub fn integrate<G>(
         &self,
         a: f64,
@@ -245,6 +256,20 @@ impl TanhSinh {
 }
 
 /// Convenience: tanh-sinh integration with default settings.
+///
+/// # Example
+///
+/// ```
+/// use bilby::tanh_sinh_integrate;
+///
+/// // Integral of 1/sqrt(x) over [0, 1] = 2 (endpoint singularity)
+/// let result = tanh_sinh_integrate(|x| 1.0 / x.sqrt(), 0.0, 1.0, 1e-10).unwrap();
+/// assert!((result.value - 2.0).abs() < 1e-7);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::DegenerateInterval`] if `a` or `b` is NaN.
 pub fn tanh_sinh_integrate<G>(
     f: G,
     a: f64,

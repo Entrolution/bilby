@@ -48,18 +48,21 @@ impl Default for CauchyPV {
 
 impl CauchyPV {
     /// Set absolute tolerance.
+    #[must_use]
     pub fn with_abs_tol(mut self, tol: f64) -> Self {
         self.abs_tol = tol;
         self
     }
 
     /// Set relative tolerance.
+    #[must_use]
     pub fn with_rel_tol(mut self, tol: f64) -> Self {
         self.rel_tol = tol;
         self
     }
 
     /// Set maximum number of function evaluations.
+    #[must_use]
     pub fn with_max_evals(mut self, n: usize) -> Self {
         self.max_evals = n;
         self
@@ -68,6 +71,13 @@ impl CauchyPV {
     /// Compute PV ∫ₐᵇ f(x)/(x-c) dx.
     ///
     /// The singularity c must be strictly inside (a, b).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::DegenerateInterval`] if any bound or `c` is NaN.
+    /// Returns [`QuadratureError::InvalidInput`] if `c` is not strictly inside
+    /// `(a, b)` or if `f(c)` is not finite.
+    #[allow(clippy::many_single_char_names)] // a, b, c, f, g are conventional in quadrature
     pub fn integrate<G>(
         &self,
         a: f64,
@@ -128,6 +138,23 @@ impl CauchyPV {
 }
 
 /// Convenience: Cauchy principal value integration with default settings.
+///
+/// # Example
+///
+/// ```
+/// use bilby::pv_integrate;
+///
+/// // PV integral of x^2/(x - 0.3) over [0, 1]
+/// let exact = 0.8 + 0.09 * (7.0_f64 / 3.0).ln();
+/// let result = pv_integrate(|x| x * x, 0.0, 1.0, 0.3, 1e-10).unwrap();
+/// assert!((result.value - exact).abs() < 1e-7);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::DegenerateInterval`] if any bound or `c` is NaN.
+/// Returns [`QuadratureError::InvalidInput`] if `c` is not strictly inside
+/// `(a, b)` or if `f(c)` is not finite.
 pub fn pv_integrate<G>(
     f: G,
     a: f64,

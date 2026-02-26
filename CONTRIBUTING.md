@@ -56,7 +56,7 @@ Before submitting a PR, ensure:
 cargo fmt
 
 # Run clippy
-cargo clippy -- -D warnings
+cargo clippy --all-features -- -D warnings
 
 # Check documentation
 cargo doc --no-deps

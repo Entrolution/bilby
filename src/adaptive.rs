@@ -97,24 +97,28 @@ impl Default for AdaptiveIntegrator {
 
 impl AdaptiveIntegrator {
     /// Set the Gauss-Kronrod pair used for panel evaluation.
+    #[must_use]
     pub fn with_pair(mut self, pair: GKPair) -> Self {
         self.pair = pair;
         self
     }
 
     /// Set the absolute error tolerance.
+    #[must_use]
     pub fn with_abs_tol(mut self, tol: f64) -> Self {
         self.abs_tol = tol;
         self
     }
 
     /// Set the relative error tolerance.
+    #[must_use]
     pub fn with_rel_tol(mut self, tol: f64) -> Self {
         self.rel_tol = tol;
         self
     }
 
     /// Set the maximum number of function evaluations.
+    #[must_use]
     pub fn with_max_evals(mut self, n: usize) -> Self {
         self.max_evals = n;
         self
@@ -125,6 +129,11 @@ impl AdaptiveIntegrator {
     /// Returns a [`QuadratureResult`] with the best estimate and error bound.
     /// If the tolerance could not be achieved within the evaluation budget,
     /// `converged` will be `false` but the best estimate is still returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if both tolerances are non-positive
+    /// or if `max_evals` is less than one Gauss-Kronrod panel evaluation.
     pub fn integrate<G>(
         &self,
         a: f64,
@@ -142,6 +151,11 @@ impl AdaptiveIntegrator {
     /// Break points split the interval at known discontinuities or singularities.
     /// The adaptive algorithm then refines each sub-interval independently in a
     /// global priority queue.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if any break point is outside
+    /// `(a, b)`, is NaN, or if both tolerances are non-positive.
     pub fn integrate_with_breaks<G>(
         &self,
         a: f64,
@@ -189,6 +203,9 @@ impl AdaptiveIntegrator {
 
         // Seed the priority queue with initial intervals
         for &(ia, ib) in intervals {
+            // Exact comparison is intentional: degenerate zero-width
+            // intervals are an edge case, not a floating-point tolerance issue.
+            #[allow(clippy::float_cmp)]
             if ia == ib {
                 continue;
             }
@@ -210,10 +227,7 @@ impl AdaptiveIntegrator {
         while !self.tolerance_met(total_estimate, total_error)
             && num_evals + 2 * evals_per_call <= self.max_evals
         {
-            let worst = match heap.pop() {
-                Some(s) => s,
-                None => break,
-            };
+            let Some(worst) = heap.pop() else { break };
 
             // Bisect the worst interval
             let mid = 0.5 * (worst.a + worst.b);
@@ -339,6 +353,16 @@ where
 ///
 /// Break points indicate locations of discontinuities or singularities.
 /// The interval is split at these points before adaptive refinement begins.
+///
+/// # Example
+///
+/// ```
+/// use bilby::adaptive_integrate_with_breaks;
+///
+/// // Integrate |x| over [-1, 1] with a break at the cusp
+/// let result = adaptive_integrate_with_breaks(|x: f64| x.abs(), -1.0, 1.0, &[0.0], 1e-12).unwrap();
+/// assert!((result.value - 1.0).abs() < 1e-12);
+/// ```
 ///
 /// # Errors
 ///
@@ -506,5 +530,63 @@ mod tests {
         // Should converge quickly for a polynomial — just a few GK15 evals
         assert!(r.num_evals > 0);
         assert!(r.num_evals <= 200, "num_evals={}", r.num_evals);
+    }
+
+    /// Reversed bounds for exp(x): ∫₁⁰ exp(x) dx = -(e - 1).
+    #[test]
+    fn reversed_bounds_exp() {
+        let forward = adaptive_integrate(f64::exp, 0.0, 1.0, 1e-12).unwrap();
+        let reverse = adaptive_integrate(f64::exp, 1.0, 0.0, 1e-12).unwrap();
+        assert!(
+            (forward.value + reverse.value).abs() < 1e-12,
+            "forward={}, reverse={}",
+            forward.value,
+            reverse.value
+        );
+    }
+
+    /// Reversed bounds for a polynomial: ∫₁⁰ x² dx = -1/3.
+    #[test]
+    fn reversed_bounds_polynomial() {
+        let r = adaptive_integrate(|x| x * x, 1.0, 0.0, 1e-12).unwrap();
+        assert!(r.converged, "err={}", r.error_estimate);
+        assert!(
+            (r.value + 1.0 / 3.0).abs() < 1e-12,
+            "value={}, expected -1/3",
+            r.value
+        );
+    }
+
+    /// Reversed bounds with break points: ∫₁⁻¹ |x| dx = -1.
+    #[test]
+    fn reversed_bounds_with_breaks() {
+        let forward =
+            adaptive_integrate_with_breaks(|x: f64| x.abs(), -1.0, 1.0, &[0.0], 1e-12).unwrap();
+        let reverse =
+            adaptive_integrate_with_breaks(|x: f64| x.abs(), 1.0, -1.0, &[0.0], 1e-12).unwrap();
+        assert!(forward.converged, "forward err={}", forward.error_estimate);
+        assert!(reverse.converged, "reverse err={}", reverse.error_estimate);
+        assert!(
+            (forward.value + reverse.value).abs() < 1e-12,
+            "forward={}, reverse={}",
+            forward.value,
+            reverse.value
+        );
+    }
+
+    /// Reversed bounds with break points for step function.
+    #[test]
+    fn reversed_bounds_step_with_breaks() {
+        let step = |x: f64| if x < 2.0 { 1.0 } else { 3.0 };
+        let forward = adaptive_integrate_with_breaks(step, 0.0, 4.0, &[2.0], 1e-12).unwrap();
+        let reverse = adaptive_integrate_with_breaks(step, 4.0, 0.0, &[2.0], 1e-12).unwrap();
+        assert!(forward.converged, "forward err={}", forward.error_estimate);
+        assert!(reverse.converged, "reverse err={}", reverse.error_estimate);
+        assert!(
+            (forward.value + reverse.value).abs() < 1e-12,
+            "forward={}, reverse={}",
+            forward.value,
+            reverse.value
+        );
     }
 }

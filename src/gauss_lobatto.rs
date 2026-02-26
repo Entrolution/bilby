@@ -40,6 +40,10 @@ impl GaussLobatto {
     /// Create a new n-point Gauss-Lobatto rule.
     ///
     /// Requires `n >= 2` (must include both endpoints).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `n` is less than 2.
     pub fn new(n: usize) -> Result<Self, QuadratureError> {
         if n < 2 {
             return Err(QuadratureError::InvalidInput(
@@ -52,36 +56,15 @@ impl GaussLobatto {
             rule: QuadratureRule { nodes, weights },
         })
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on \[-1, 1\].
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(GaussLobatto, nodes_doc: "Returns the nodes on \\[-1, 1\\].");
 
 /// Compute n-point Gauss-Lobatto nodes and weights.
 ///
 /// Nodes include -1 and 1. Interior nodes are zeros of P'_{n-1}(x).
-/// Weights: w_k = 2 / (n(n-1) [P_{n-1}(x_k)]^2).
+/// Weights: `w_k` = 2 / (n(n-1) \[`P_{n-1}(x_k)`\]^2).
+#[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
 fn compute_lobatto(n: usize) -> (Vec<f64>, Vec<f64>) {
     let n_f = n as f64;
     let nm1 = n - 1;

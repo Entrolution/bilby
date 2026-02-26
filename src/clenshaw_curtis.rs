@@ -38,6 +38,10 @@ impl ClenshawCurtis {
     /// Create a new n-point Clenshaw-Curtis rule.
     ///
     /// Requires `n >= 1`. For `n == 1`, returns the midpoint rule.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
     pub fn new(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -48,37 +52,16 @@ impl ClenshawCurtis {
             rule: QuadratureRule { nodes, weights },
         })
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on \[-1, 1\].
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(ClenshawCurtis, nodes_doc: "Returns the nodes on \\[-1, 1\\].");
 
 /// Compute n-point Clenshaw-Curtis nodes and weights.
 ///
 /// For n == 1: midpoint rule (x=0, w=2).
-/// For n >= 2: nodes at x_k = cos(k π / (n-1)), weights via explicit formula.
-fn compute_clenshaw_curtis(n: usize) -> (Vec<f64>, Vec<f64>) {
+/// For n >= 2: nodes at `x_k` = cos(k π / (n-1)), weights via explicit formula.
+#[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
+pub(crate) fn compute_clenshaw_curtis(n: usize) -> (Vec<f64>, Vec<f64>) {
     use core::f64::consts::PI;
 
     if n == 1 {

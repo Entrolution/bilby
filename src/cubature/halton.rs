@@ -43,6 +43,10 @@ impl HaltonSequence {
     /// Create a new Halton sequence generator for `dim` dimensions.
     ///
     /// Supports up to 100 dimensions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `dim` is zero or exceeds 100.
     pub fn new(dim: usize) -> Result<Self, QuadratureError> {
         if dim == 0 {
             return Err(QuadratureError::InvalidInput("dimension must be >= 1"));
@@ -60,6 +64,10 @@ impl HaltonSequence {
     }
 
     /// Generate the next point in \[0, 1)^d.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `point.len()` is less than the sequence dimension.
     pub fn next_point(&mut self, point: &mut [f64]) {
         assert!(point.len() >= self.dim);
         self.index += 1;
@@ -69,11 +77,13 @@ impl HaltonSequence {
     }
 
     /// Current index (number of points generated so far).
+    #[must_use]
     pub fn index(&self) -> u64 {
         self.index
     }
 
     /// Spatial dimension.
+    #[must_use]
     pub fn dim(&self) -> usize {
         self.dim
     }
@@ -81,12 +91,16 @@ impl HaltonSequence {
 
 /// Radical-inverse function: reverse the digits of `n` in the given `base`.
 fn radical_inverse(mut n: u64, base: u32) -> f64 {
-    let base_f = base as f64;
+    let base_f = f64::from(base);
+    let base_u64 = u64::from(base);
     let mut result = 0.0;
     let mut factor = 1.0 / base_f;
     while n > 0 {
-        result += (n % base as u64) as f64 * factor;
-        n /= base as u64;
+        // n % base_u64 is always < base (a small u32), so fits exactly in f64.
+        #[allow(clippy::cast_precision_loss)]
+        let digit = (n % base_u64) as f64;
+        result += digit * factor;
+        n /= base_u64;
         factor /= base_f;
     }
     result

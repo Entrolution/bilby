@@ -1,9 +1,9 @@
 //! Golub-Welsch algorithm for computing Gaussian quadrature rules
 //! from three-term recurrence coefficients.
 //!
-//! Given the monic recurrence: x p_k = p_{k+1} + α_k p_k + β_k p_{k-1},
-//! the Jacobi matrix has diagonal α_k and off-diagonal √β_{k+1}.
-//! Eigenvalues = quadrature nodes, weights = μ₀ · z_k² where z_k is the
+//! Given the monic recurrence: x `p_k` = `p_{k+1}` + `α_k` `p_k` + `β_k` `p_{k-1}`,
+//! the Jacobi matrix has diagonal `α_k` and off-diagonal √`β_{k+1}`.
+//! Eigenvalues = quadrature nodes, weights = μ₀ · `z_k²` where `z_k` is the
 //! first component of the k-th eigenvector and μ₀ is the zeroth moment.
 //!
 //! Reference: Golub & Welsch (1969), "Calculation of Gauss Quadrature Rules",
@@ -93,6 +93,7 @@ pub(crate) fn radau_modify(diag: &mut [f64], off_diag_sq: &[f64], x0: f64) {
 ///
 /// On entry: `d` = diagonal, `e` = off-diagonal (length n-1).
 /// On exit: `d` = eigenvalues (unsorted), `z` = first row of eigenvector matrix.
+#[allow(clippy::many_single_char_names)] // d, e, z, m, l, g, r, s, c, p, f, b are standard names in tridiagonal eigenvalue algorithms
 fn symmetric_tridiag_eig(d: &mut [f64], e: &mut [f64], z: &mut [f64]) {
     let n = d.len();
     if n <= 1 {

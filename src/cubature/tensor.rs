@@ -38,6 +38,10 @@ impl TensorProductRule {
     /// Construct from a slice of 1D rules (one per dimension).
     ///
     /// Total points = product of all 1D orders.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `rules_1d` is empty.
     pub fn new(rules_1d: &[&QuadratureRule<f64>]) -> Result<Self, QuadratureError> {
         if rules_1d.is_empty() {
             return Err(QuadratureError::InvalidInput(
@@ -77,6 +81,10 @@ impl TensorProductRule {
     }
 
     /// Construct from a single 1D rule applied to all dimensions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `dim` is zero.
     pub fn isotropic(rule_1d: &QuadratureRule<f64>, dim: usize) -> Result<Self, QuadratureError> {
         let refs: Vec<&QuadratureRule<f64>> = (0..dim).map(|_| rule_1d).collect();
         Self::new(&refs)
@@ -84,18 +92,21 @@ impl TensorProductRule {
 
     /// Returns a reference to the underlying cubature rule.
     #[inline]
+    #[must_use]
     pub fn rule(&self) -> &CubatureRule {
         &self.rule
     }
 
     /// Number of cubature points.
     #[inline]
+    #[must_use]
     pub fn num_points(&self) -> usize {
         self.rule.num_points()
     }
 
     /// Spatial dimension.
     #[inline]
+    #[must_use]
     pub fn dim(&self) -> usize {
         self.rule.dim()
     }

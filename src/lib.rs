@@ -93,9 +93,107 @@
 //! assert!((result - 1.0 / 3.0).abs() < 1e-14);
 //! # }
 //! ```
+//!
+//! ## Tanh-Sinh (Double Exponential)
+//!
+//! ```
+//! use bilby::tanh_sinh_integrate;
+//!
+//! // Endpoint singularity: integral of 1/sqrt(x) over [0, 1] = 2
+//! let result = tanh_sinh_integrate(|x| 1.0 / x.sqrt(), 0.0, 1.0, 1e-10).unwrap();
+//! assert!((result.value - 2.0).abs() < 1e-7);
+//! ```
+//!
+//! ## Cauchy Principal Value
+//!
+//! ```
+//! use bilby::pv_integrate;
+//!
+//! // PV integral of x^2/(x - 0.3) over [0, 1]
+//! let exact = 0.8 + 0.09 * (7.0_f64 / 3.0).ln();
+//! let result = pv_integrate(|x| x * x, 0.0, 1.0, 0.3, 1e-10).unwrap();
+//! assert!((result.value - exact).abs() < 1e-7);
+//! ```
+//!
+//! ## Oscillatory Integration
+//!
+//! ```
+//! use bilby::integrate_oscillatory_sin;
+//!
+//! // Integral of sin(100x) over [0, 1]
+//! let exact = (1.0 - 100.0_f64.cos()) / 100.0;
+//! let result = integrate_oscillatory_sin(|_| 1.0, 0.0, 1.0, 100.0, 1e-10).unwrap();
+//! assert!((result.value - exact).abs() < 1e-8);
+//! ```
+//!
+//! ## Weighted Integration
+//!
+//! ```
+//! use bilby::weighted::{weighted_integrate, WeightFunction};
+//!
+//! // Gauss-Hermite: integral of e^(-x^2) over (-inf, inf) = sqrt(pi)
+//! let result = weighted_integrate(|_| 1.0, WeightFunction::Hermite, 20).unwrap();
+//! assert!((result - core::f64::consts::PI.sqrt()).abs() < 1e-12);
+//! ```
+//!
+//! ## Sparse Grids
+//!
+//! ```
+//! use bilby::cubature::SparseGrid;
+//!
+//! let sg = SparseGrid::clenshaw_curtis(3, 3).unwrap();
+//! let result = sg.rule().integrate_box(
+//!     &[0.0, 0.0, 0.0], &[1.0, 1.0, 1.0],
+//!     |x| x[0] * x[1] * x[2],
+//! );
+//! assert!((result - 0.125).abs() < 1e-12);
+//! ```
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
+
+/// Implement the standard quadrature rule accessor methods.
+///
+/// Most 1-D rule types wrap a `QuadratureRule<f64>` in a field called `rule`
+/// and expose the same four accessors: `rule()`, `order()`, `nodes()`, and
+/// `weights()`. This macro generates all four with the correct attributes
+/// and documentation.
+///
+/// `$nodes_doc` customises the doc comment on `nodes()` to describe the
+/// domain (e.g. "\\[-1, 1\\]", "\\[0, ∞)", "(-∞, ∞)").
+macro_rules! impl_rule_accessors {
+    ($ty:ty, nodes_doc: $nodes_doc:expr) => {
+        impl $ty {
+            /// Returns a reference to the underlying quadrature rule.
+            #[inline]
+            #[must_use]
+            pub fn rule(&self) -> &$crate::rule::QuadratureRule<f64> {
+                &self.rule
+            }
+
+            /// Returns the number of quadrature points.
+            #[inline]
+            #[must_use]
+            pub fn order(&self) -> usize {
+                self.rule.order()
+            }
+
+            #[doc = $nodes_doc]
+            #[inline]
+            #[must_use]
+            pub fn nodes(&self) -> &[f64] {
+                &self.rule.nodes
+            }
+
+            /// Returns the weights.
+            #[inline]
+            #[must_use]
+            pub fn weights(&self) -> &[f64] {
+                &self.rule.weights
+            }
+        }
+    };
+}
 
 pub mod adaptive;
 #[cfg(feature = "std")]

@@ -40,6 +40,10 @@ impl GaussRadau {
     /// Create an n-point Gauss-Radau rule including the left endpoint -1.
     ///
     /// Requires `n >= 1`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
     pub fn left(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -53,6 +57,10 @@ impl GaussRadau {
     /// Create an n-point Gauss-Radau rule including the right endpoint +1.
     ///
     /// Requires `n >= 1`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
     pub fn right(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -65,37 +73,16 @@ impl GaussRadau {
             rule: QuadratureRule { nodes, weights },
         })
     }
-
-    /// Returns a reference to the underlying quadrature rule.
-    #[inline]
-    pub fn rule(&self) -> &QuadratureRule<f64> {
-        &self.rule
-    }
-
-    /// Returns the number of quadrature points.
-    #[inline]
-    pub fn order(&self) -> usize {
-        self.rule.order()
-    }
-
-    /// Returns the nodes on \[-1, 1\].
-    #[inline]
-    pub fn nodes(&self) -> &[f64] {
-        &self.rule.nodes
-    }
-
-    /// Returns the weights.
-    #[inline]
-    pub fn weights(&self) -> &[f64] {
-        &self.rule.weights
-    }
 }
+
+impl_rule_accessors!(GaussRadau, nodes_doc: "Returns the nodes on \\[-1, 1\\].");
 
 /// Compute n-point left Gauss-Radau nodes and weights (includes -1).
 ///
 /// Uses the Golub-Welsch algorithm with a Radau modification of the
 /// Legendre Jacobi matrix. The last diagonal element is modified so
 /// that -1 is an eigenvalue of the tridiagonal matrix.
+#[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
 fn compute_radau_left(n: usize) -> (Vec<f64>, Vec<f64>) {
     if n == 1 {
         return (vec![-1.0], vec![2.0]);

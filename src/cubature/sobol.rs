@@ -44,6 +44,10 @@ impl SobolSequence {
     /// Create a new Sobol sequence generator for `dim` dimensions.
     ///
     /// Supports up to 40 dimensions (expandable with more direction numbers).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuadratureError::InvalidInput`] if `dim` is zero or exceeds 40.
     pub fn new(dim: usize) -> Result<Self, QuadratureError> {
         if dim == 0 {
             return Err(QuadratureError::InvalidInput("dimension must be >= 1"));
@@ -59,7 +63,10 @@ impl SobolSequence {
 
         // Dimension 0: Van der Corput (base 2)
         for (i, d) in direction.iter_mut().enumerate().take(b) {
-            *d = 1u32 << (BITS - 1 - i as u32);
+            // i < BITS (32), so i as u32 cannot truncate.
+            #[allow(clippy::cast_possible_truncation)]
+            let i_u32 = i as u32;
+            *d = 1u32 << (BITS - 1 - i_u32);
         }
 
         // Higher dimensions: from direction number table
@@ -70,7 +77,10 @@ impl SobolSequence {
 
             // Initial direction numbers from the table
             for i in 0..s as usize {
-                direction[j * b + i] = entry.m[i] << (BITS - 1 - i as u32);
+                // i < s <= 8, so i as u32 cannot truncate.
+                #[allow(clippy::cast_possible_truncation)]
+                let i_u32 = i as u32;
+                direction[j * b + i] = entry.m[i] << (BITS - 1 - i_u32);
             }
 
             // Generate remaining direction numbers via recurrence
@@ -95,6 +105,10 @@ impl SobolSequence {
     }
 
     /// Generate the next point in \[0, 1)^d.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `point.len()` is less than the sequence dimension.
     pub fn next_point(&mut self, point: &mut [f64]) {
         assert!(point.len() >= self.dim);
         self.index += 1;
@@ -102,11 +116,13 @@ impl SobolSequence {
         // Find the rightmost zero bit of (index - 1) (gray-code position)
         let c = (self.index - 1).trailing_ones() as usize;
         let b = BITS as usize;
+        // 1u64 << 32 = 4294967296, fits exactly in f64.
+        #[allow(clippy::cast_precision_loss)]
         let norm = 1.0 / (1u64 << BITS) as f64;
 
         for (j, p) in point.iter_mut().enumerate().take(self.dim) {
             self.state[j] ^= self.direction[j * b + c];
-            *p = self.state[j] as f64 * norm;
+            *p = f64::from(self.state[j]) * norm;
         }
     }
 
@@ -133,11 +149,13 @@ impl SobolSequence {
     }
 
     /// Current index.
+    #[must_use]
     pub fn index(&self) -> u64 {
         self.index
     }
 
     /// Spatial dimension.
+    #[must_use]
     pub fn dim(&self) -> usize {
         self.dim
     }
@@ -152,14 +170,14 @@ struct SobolEntry {
     degree: u32,
     /// Coefficients of the primitive polynomial (excluding leading and trailing 1).
     coeffs: u32,
-    /// Initial direction numbers m_1, ..., m_s.
+    /// Initial direction numbers `m_1`, ..., `m_s`.
     m: [u32; 8],
 }
 
 /// Direction numbers from Joe & Kuo (2010) for dimensions 2..40.
 /// Each entry: (degree s, polynomial coefficients a, initial m-values).
 ///
-/// Source: https://web.maths.unsw.edu.au/~fkuo/sobol/joe-kuo-old.1111
+/// Source: <https://web.maths.unsw.edu.au/~fkuo/sobol/joe-kuo-old.1111>
 static SOBOL_TABLE: [SobolEntry; 39] = [
     SobolEntry {
         degree: 1,
@@ -411,5 +429,72 @@ mod tests {
     fn invalid_dim() {
         assert!(SobolSequence::new(0).is_err());
         assert!(SobolSequence::new(41).is_err());
+    }
+
+    #[test]
+    fn high_dim_points_in_unit_cube() {
+        let dim = 20;
+        let mut sob = SobolSequence::new(dim).unwrap();
+        let mut pt = vec![0.0; dim];
+        for i in 0..200 {
+            sob.next_point(&mut pt);
+            for (j, &x) in pt.iter().enumerate() {
+                assert!(
+                    x >= 0.0 && x < 1.0,
+                    "point {i}, dim {j}: x={x} out of [0,1)"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn high_dim_30_points_in_unit_cube() {
+        let dim = 30;
+        let mut sob = SobolSequence::new(dim).unwrap();
+        let mut pt = vec![0.0; dim];
+        for i in 0..100 {
+            sob.next_point(&mut pt);
+            for (j, &x) in pt.iter().enumerate() {
+                assert!(
+                    x >= 0.0 && x < 1.0,
+                    "point {i}, dim {j}: x={x} out of [0,1)"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn high_dim_constant_integral() {
+        // Quasi-Monte Carlo estimate of ∫_{[0,1]^d} 1 dx = 1
+        // Using Sobol with N points, the average of f=1 should be 1.
+        let dim = 20;
+        let n = 1024;
+        let mut sob = SobolSequence::new(dim).unwrap();
+        let mut pt = vec![0.0; dim];
+        let mut sum = 0.0;
+        for _ in 0..n {
+            sob.next_point(&mut pt);
+            sum += 1.0; // f(x) = 1 for all x
+        }
+        let estimate = sum / n as f64;
+        assert!(
+            (estimate - 1.0).abs() < 1e-14,
+            "estimate={estimate}, expected 1.0"
+        );
+    }
+
+    #[test]
+    fn max_dim_construction() {
+        // Verify we can construct the maximum supported dimension (40).
+        let sob = SobolSequence::new(40);
+        assert!(sob.is_ok());
+        let mut sob = sob.unwrap();
+        assert_eq!(sob.dim(), 40);
+
+        let mut pt = vec![0.0; 40];
+        sob.next_point(&mut pt);
+        for (j, &x) in pt.iter().enumerate() {
+            assert!(x >= 0.0 && x < 1.0, "dim {j}: x={x} out of [0,1)");
+        }
     }
 }
