@@ -196,9 +196,9 @@ Complete the Gaussian quadrature family.
 ### 5.4 Caching and polish ✅
 - `cache` module: `LazyLock`-based precomputed GL rules (GL5–GL100)
 - `#[inline]` on all trivial getters and hot-path integration functions
-- 179 unit tests + 35 doc tests
+- 179 unit tests + 38 doc tests
 
-**Milestone: v1.0.0** — Production-ready.
+**Milestone: v0.1.0** — Performance and polish.
 
 ## Non-Goals (at least initially)
 
@@ -207,13 +207,13 @@ Complete the Gaussian quadrature family.
 - Arbitrary-precision arithmetic (stay in f32/f64 land)
 - GPU acceleration (diminishing returns for quadrature vs. the integrand evaluation itself)
 
-## Key Design Decisions to Make Early
+## Key Design Decisions
 
-1. **Trait bounds**: `F: Float` (num-traits) vs custom trait. Leaning toward num-traits `Float` for echidna compatibility.
-2. **Node/weight storage**: `Vec<F>` vs `&[F]` vs const-generic arrays. Likely `Vec` for flexibility with a `SmallRule<F, N>` const-generic variant for known small sizes.
-3. **Integrand signature**: `Fn(F) -> F` vs `Fn(&[F]) -> F` for multi-dimensional. Probably separate 1D and N-D APIs rather than a unified signature.
-4. **Error model**: return `(value, error)` tuple vs a `QuadratureResult` struct. Struct is more extensible (can add num_evals, converged flag later).
-5. **Rule representation**: separate types per family (GaussLegendre, GaussKronrod, etc.) vs enum. Separate types with a shared trait — more ergonomic and allows family-specific methods.
+1. **Trait bounds**: `F: Float` via `num_traits::Float` — composable with echidna AD types
+2. **Node/weight storage**: `Vec<F>` for flexibility; fixed-size const-generic variants not yet needed
+3. **Integrand signature**: `Fn(F) -> F` for 1D, `Fn(&[F]) -> F` for N-D — separate APIs
+4. **Error model**: `QuadratureResult<F>` struct with value, error estimate, num evals, convergence flag
+5. **Rule representation**: separate types per family (`GaussLegendre`, `GaussKronrod`, etc.) with shared `QuadratureRule<F>` struct
 
 ## References
 
