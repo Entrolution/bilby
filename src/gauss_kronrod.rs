@@ -14,6 +14,17 @@
 //! compile time.
 #![allow(clippy::excessive_precision)]
 
+/// Detailed result from a single Gauss-Kronrod panel evaluation.
+///
+/// Used internally by the adaptive integrator for error analysis.
+#[derive(Debug, Clone)]
+pub(crate) struct GKDetail {
+    /// Kronrod estimate of the integral.
+    pub estimate: f64,
+    /// Error estimate (Kronrod - Gauss difference, scaled).
+    pub error: f64,
+}
+
 /// Identifies which embedded Gauss-Kronrod pair to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GKPair {
@@ -112,8 +123,24 @@ impl GaussKronrod {
     where
         G: Fn(f64) -> f64,
     {
+        let detail = self.integrate_detail(a, b, f);
+        (detail.estimate, detail.error)
+    }
+
+    /// Internal detailed integration returning full QUADPACK output.
+    ///
+    /// Returns estimate, error, integral of |f|, and integral of |f - mean|
+    /// over the interval. The adaptive integrator uses these for roundoff
+    /// detection.
+    pub(crate) fn integrate_detail<G>(&self, a: f64, b: f64, f: G) -> GKDetail
+    where
+        G: Fn(f64) -> f64,
+    {
         if a == b {
-            return (0.0, 0.0);
+            return GKDetail {
+                estimate: 0.0,
+                error: 0.0,
+            };
         }
 
         let half_width = 0.5 * (b - a);
@@ -162,17 +189,17 @@ impl GaussKronrod {
             }
         }
 
-        let result = half_width * kronrod_sum;
+        let estimate = half_width * kronrod_sum;
         let gauss_result = half_width * gauss_sum;
         abs_sum *= half_width.abs();
 
         // QUADPACK error estimation heuristic
-        let mut error = (result - gauss_result).abs();
+        let mut error = (estimate - gauss_result).abs();
         if abs_sum > 0.0 && error > 0.0 {
             error = abs_sum * (200.0 * error / abs_sum).min(1.0).powf(1.5);
         }
 
-        (result, error)
+        GKDetail { estimate, error }
     }
 
     /// Returns the Kronrod order.

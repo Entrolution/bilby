@@ -43,27 +43,30 @@ Core types, trait design, and the first two rule families. This phase defines th
 
 The workhorse feature. Most real integration problems need error-driven refinement.
 
-### 1.1 Global adaptive subdivision (QUADPACK-style)
-- Priority queue of subintervals ordered by error estimate
-- Bisect the interval with largest error, re-evaluate both halves
-- Terminate when total error < tolerance or max evaluations reached
-- `adaptive_integrate(f, a, b, tol)` -> `Result<(F, F), QuadratureError>`
-- Uses GK pairs internally
+### 1.1 Global adaptive subdivision (QUADPACK-style) ✅
+- `BinaryHeap`-based priority queue of subintervals ordered by error estimate
+- Bisects the interval with largest error, re-evaluates both halves via GK pairs
+- Terminates when `error <= max(abs_tol, rel_tol * |estimate|)` or max evaluations reached
+- `AdaptiveIntegrator` builder with configurable GK pair, tolerances, and eval budget
+- `adaptive_integrate(f, a, b, tol)` convenience function
 
-### 1.2 Singularity handling
-- User-specified break points (known discontinuities/singularities)
-- Endpoint singularity detection (monitor convergence rate)
-- `adaptive_integrate_with_breaks(f, a, b, breaks, tol)`
+### 1.2 Singularity handling ✅
+- User-specified break points via `adaptive_integrate_with_breaks(f, a, b, breaks, tol)`
+- Break points seed the priority queue as separate sub-intervals for global adaptive refinement
+- Validation: breaks must be within (a, b), deduplicated and sorted automatically
+- Endpoint singularity detection deferred to future refinement
 
-### 1.3 Semi-infinite and infinite intervals
-- Domain transforms: [a, inf) via x = a + t/(1-t), (-inf, inf) via x = t/(1-t^2)
-- Gauss-Laguerre for [0, inf) with weight e^(-x)
-- Gauss-Hermite for (-inf, inf) with weight e^(-x^2)
-- `integrate_semi_infinite(f, a, tol)`, `integrate_infinite(f, tol)`
+### 1.3 Semi-infinite and infinite intervals ✅
+- Domain transforms: [a, ∞) via x = a + t/(1-t), (-∞, b] via x = b - t/(1-t), (-∞, ∞) via x = t/(1-t²)
+- `integrate_semi_infinite_upper(f, a, tol)`, `integrate_semi_infinite_lower(f, b, tol)`, `integrate_infinite(f, tol)`
+- Delegates to adaptive quadrature on the transformed finite domain
+- Gauss-Laguerre/Hermite as dedicated rule families deferred to Phase 2
 
-### 1.4 Error reporting
-- `QuadratureResult<F>` struct: value, error estimate, num evaluations, convergence flag
-- Warnings for slow convergence, suspected singularities
+### 1.4 Error reporting ✅
+- `QuadratureResult<F>` struct: value, error_estimate, num_evals, converged flag
+- Non-convergence signalled via `converged: false` (always returns best estimate)
+- `QuadratureError` simplified: `NotConverged` removed, `InvalidInput` added
+- 43 unit tests + 13 doc tests
 
 **Milestone: v0.2.0** — Adaptive integration with error control, infinite domains.
 
