@@ -143,23 +143,32 @@ Complete the Gaussian quadrature family.
 
 ## Phase 4: Specialty Methods
 
-### 4.1 Oscillatory integrals
-- Filon-type methods for integrals of f(x)*exp(i*omega*x) or f(x)*sin(omega*x)
-- Levin collocation for more general oscillators
-- Critical for Fourier transforms, wave problems, BEM
+### 4.1 Oscillatory integrals ✅
+- Filon-Clenshaw-Curtis method for ∫f(x)sin(ωx)dx and ∫f(x)cos(ωx)dx
+- Chebyshev expansion of f at Clenshaw-Curtis nodes
+- Modified Chebyshev moments computed via Gauss-Legendre quadrature
+- Phase-shifted combination for sin/cos kernels; small-ω fallback to adaptive
+- `OscillatoryIntegrator` builder + `integrate_oscillatory_sin/cos` convenience functions
 
-### 4.2 Double-exponential (tanh-sinh)
-- Transforms endpoint singularities into rapidly decaying integrands
-- Good for integrands with algebraic or logarithmic endpoint singularities
-- Self-adaptive via level doubling
+### 4.2 Double-exponential (tanh-sinh) ✅
+- Transform x = tanh(π/2·sinh(t)) converts endpoint singularities to rapid decay
+- Self-adaptive via level doubling: each level halves step size, reuses all prior points
+- Handles algebraic (x^{-0.75}) and logarithmic (ln x) endpoint singularities
+- `TanhSinh` builder + `tanh_sinh_integrate` convenience function
 
-### 4.3 Cauchy principal value
-- `pv_integrate(f, a, b, c, tol)` where c is the singularity
-- Subtraction technique + adaptive integration of the remainder
+### 4.3 Cauchy principal value ✅
+- PV ∫f(x)/(x-c)dx = ∫[f(x)-f(c)]/(x-c)dx + f(c)·ln((b-c)/(c-a))
+- Subtraction technique with adaptive integration of the regularised remainder
+- Automatic breakpoint at the pole via `adaptive_integrate_with_breaks`
+- `CauchyPV` builder + `pv_integrate` convenience function
 
-### 4.4 Weighted integration
-- Integrals of f(x)*w(x) where w(x) is a known weight (log, algebraic, etc.)
-- Product integration rules
+### 4.4 Weighted integration ✅
+- Unified API: `∫f(x)·w(x)dx` dispatching to appropriate Gaussian rule
+- Jacobi, Laguerre, Hermite, Chebyshev I/II weight families
+- LogWeight w(x)=-ln(x) via Gauss-Laguerre α=1 substitution (x=e^{-t})
+- `WeightedIntegrator` builder + `weighted_integrate` convenience function
+- `integrate_over(a, b, f)` for affine-mapped finite domains
+- 172 unit tests + 35 doc tests
 
 **Milestone: v0.5.0** — Specialty quadrature.
 
