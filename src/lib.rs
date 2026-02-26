@@ -57,17 +57,32 @@
 //! ```
 
 pub mod adaptive;
+pub mod clenshaw_curtis;
 pub mod error;
+pub mod gauss_chebyshev;
+pub mod gauss_hermite;
+pub mod gauss_jacobi;
 pub mod gauss_kronrod;
+pub mod gauss_laguerre;
 pub mod gauss_legendre;
+pub mod gauss_lobatto;
+pub mod gauss_radau;
+pub(crate) mod golub_welsch;
 pub mod result;
 pub mod rule;
 pub mod transforms;
 
 pub use adaptive::{adaptive_integrate, adaptive_integrate_with_breaks, AdaptiveIntegrator};
+pub use clenshaw_curtis::ClenshawCurtis;
 pub use error::QuadratureError;
+pub use gauss_chebyshev::{GaussChebyshevFirstKind, GaussChebyshevSecondKind};
+pub use gauss_hermite::GaussHermite;
+pub use gauss_jacobi::GaussJacobi;
 pub use gauss_kronrod::{GKPair, GaussKronrod};
+pub use gauss_laguerre::GaussLaguerre;
 pub use gauss_legendre::GaussLegendre;
+pub use gauss_lobatto::GaussLobatto;
+pub use gauss_radau::GaussRadau;
 pub use result::QuadratureResult;
 pub use rule::QuadratureRule;
 pub use transforms::{
