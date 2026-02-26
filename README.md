@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/bilby.svg)](https://crates.io/crates/bilby)
 [![Docs.rs](https://docs.rs/bilby/badge.svg)](https://docs.rs/bilby)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
-[![MSRV](https://img.shields.io/badge/MSRV-1.83-blue.svg)](https://www.rust-lang.org)
+[![MSRV](https://img.shields.io/badge/MSRV-1.93-blue.svg)](https://www.rust-lang.org)
 
 A high-performance numerical quadrature (integration) library for Rust.
 

@@ -1,4 +1,4 @@
 # Clippy configuration
 # See: https://doc.rust-lang.org/clippy/configuration.html
 
-msrv = "1.83"
+msrv = "1.93"
