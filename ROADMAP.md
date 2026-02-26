@@ -13,41 +13,29 @@ A high-performance, comprehensive numerical integration library for Rust.
 
 Core types, trait design, and the first two rule families. This phase defines the API that everything else builds on.
 
-### 0.1 Project scaffolding
-- `cargo init --lib`, dual MIT/Apache-2.0, MSRV policy
-- CI (clippy, fmt, test, MSRV check)
-- Trait definitions:
+### 0.1 Project scaffolding ✅
+- `cargo init --lib`, dual MIT/Apache-2.0, MSRV 1.93
+- CI (clippy, fmt, test, MSRV check, coverage, security audit, publish workflow)
+- `QuadratureRule<F>` struct with `nodes: Vec<F>`, `weights: Vec<F>`
+- `QuadratureError` enum (ZeroOrder, DegenerateInterval, NotConverged)
 
-```rust
-/// A precomputed quadrature rule on [-1, 1].
-pub struct QuadratureRule<F> {
-    pub nodes: Vec<F>,
-    pub weights: Vec<F>,
-}
+### 0.2 Gauss-Legendre (Bogaert algorithm) ✅
+- Newton iteration on Legendre recurrence for n <= 100 (Tricomi initial guess)
+- Bogaert (2014) asymptotic expansion for n > 100 (O(1) per node via Bessel zeros + Chebyshev interpolants)
+- `GaussLegendre::new(n) -> Result<GaussLegendre, QuadratureError>`
+- 16-digit accuracy verified against exact polynomial integration up to degree 2n-1
 
-/// Integrate f over [a, b] using a precomputed rule.
-impl<F: Float> QuadratureRule<F> {
-    pub fn integrate(&self, a: F, b: F, f: impl Fn(F) -> F) -> F;
-}
-```
-
-### 0.2 Gauss-Legendre (Bogaert algorithm)
-- O(1) per node via asymptotic expansions (Bogaert 2014)
-- Exact for polynomials of degree 2n-1
-- Analytic formulae for n <= 5, Newton's method for small n, asymptotics for large n
-- `GaussLegendre::new(n)` -> `QuadratureRule<F>`
-- Target: 16-digit accuracy, O(n) total for all nodes
-
-### 0.3 Gauss-Kronrod (embedded pairs)
+### 0.3 Gauss-Kronrod (embedded pairs) ✅
 - G7-K15, G10-K21, G15-K31, G20-K41, G25-K51 pairs
-- Returns `(estimate, error_estimate)` — the Gauss subset gives one estimate, the full Kronrod set gives another, difference bounds the error
-- `GaussKronrod::new(pair)` -> `KronrodRule<F>`
-- This is the building block for adaptive integration
+- Canonical QUADPACK coefficients (from netlib Fortran source)
+- Returns `(estimate, error_estimate)` with QUADPACK error heuristic
+- `GaussKronrod::new(pair)` with static coefficient slices (no allocation)
 
-### 0.4 Basic integration API
-- `integrate(rule, f, a, b)` — fixed-order integration on [a, b]
-- `integrate_composite(rule, f, a, b, n_panels)` — composite rule (subdivide into n equal panels)
-- Affine domain transform from [-1, 1] to [a, b]
+### 0.4 Basic integration API ✅
+- `QuadratureRule::integrate(a, b, f)` — affine transform from [-1, 1] to [a, b]
+- `QuadratureRule::integrate_composite(a, b, n_panels, f)` — composite rule
+- `GaussKronrod::integrate(a, b, f)` — returns (estimate, error_estimate)
+- 22 unit tests + 4 doc tests
 
 **Milestone: v0.1.0** — Gauss-Legendre + Gauss-Kronrod, fixed-order integration.
 

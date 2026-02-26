@@ -67,13 +67,13 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   msrv:
-    name: MSRV (1.83)
+    name: MSRV (1.93)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust 1.83
-        uses: dtolnay/rust-toolchain@1.83
+      - name: Install Rust 1.93
+        uses: dtolnay/rust-toolchain@1.93
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2

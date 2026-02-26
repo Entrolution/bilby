@@ -15,21 +15,33 @@
 //!
 //! ## Quick Start
 //!
-//! ```rust,ignore
+//! ```
 //! use bilby::GaussLegendre;
 //!
 //! // Create a 10-point Gauss-Legendre rule
-//! let gl = GaussLegendre::new(10);
+//! let gl = GaussLegendre::new(10).unwrap();
 //!
-//! // Integrate x^2 over [0, 1]
-//! let result = gl.integrate(0.0, 1.0, |x| x * x);
+//! // Integrate x^2 over [0, 1] (exact result = 1/3)
+//! let result = gl.rule().integrate(0.0, 1.0, |x: f64| x * x);
 //! assert!((result - 1.0 / 3.0).abs() < 1e-14);
 //! ```
+//!
+//! ## Gauss-Kronrod Error Estimation
+//!
+//! ```
+//! use bilby::{GaussKronrod, GKPair};
+//!
+//! let gk = GaussKronrod::new(GKPair::G7K15);
+//! let (estimate, error) = gk.integrate(0.0, std::f64::consts::PI, f64::sin);
+//! assert!((estimate - 2.0).abs() < 1e-14);
+//! ```
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn placeholder() {
-        // Tests will be added with the first rule implementation.
-    }
-}
+pub mod error;
+pub mod gauss_kronrod;
+pub mod gauss_legendre;
+pub mod rule;
+
+pub use error::QuadratureError;
+pub use gauss_kronrod::{GKPair, GaussKronrod};
+pub use gauss_legendre::GaussLegendre;
+pub use rule::QuadratureRule;

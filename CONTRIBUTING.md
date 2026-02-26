@@ -21,7 +21,7 @@ This project is governed by the [Contributor Covenant Code of Conduct](CODE_OF_C
 
 ### Prerequisites
 
-- Rust 1.83 or later (install via [rustup](https://rustup.rs/))
+- Rust 1.93 or later (install via [rustup](https://rustup.rs/))
 - Cargo (included with Rust)
 
 ### Building
