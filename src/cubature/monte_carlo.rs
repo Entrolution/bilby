@@ -248,6 +248,222 @@ impl MonteCarloIntegrator {
             converged: true,
         })
     }
+
+    /// Parallel Monte Carlo integration over the hyperrectangle \[lower, upper\].
+    ///
+    /// For Sobol and Halton methods, all sample points are pre-generated
+    /// sequentially (the sequences are inherently serial), then function
+    /// evaluations are parallelised. For Plain MC, the sample space is split
+    /// into independent chunks with separate PRNGs, giving statistically
+    /// equivalent but numerically different results compared to sequential.
+    #[cfg(feature = "parallel")]
+    pub fn integrate_par<G>(
+        &self,
+        lower: &[f64],
+        upper: &[f64],
+        f: G,
+    ) -> Result<QuadratureResult<f64>, QuadratureError>
+    where
+        G: Fn(&[f64]) -> f64 + Sync,
+    {
+        let d = lower.len();
+        if d == 0 || upper.len() != d {
+            return Err(QuadratureError::InvalidInput(
+                "lower and upper must have equal nonzero length",
+            ));
+        }
+        if self.num_samples == 0 {
+            return Err(QuadratureError::InvalidInput(
+                "number of samples must be >= 1",
+            ));
+        }
+
+        let widths: Vec<f64> = (0..d).map(|j| upper[j] - lower[j]).collect();
+        let volume: f64 = widths.iter().product();
+        let n = self.num_samples;
+
+        match self.method {
+            MCMethod::Plain => self.integrate_plain_par(d, lower, &widths, volume, n, &f),
+            MCMethod::Sobol => self.integrate_qmc_par_sobol(d, lower, &widths, volume, n, &f),
+            MCMethod::Halton => self.integrate_qmc_par_halton(d, lower, &widths, volume, n, &f),
+        }
+    }
+
+    #[cfg(feature = "parallel")]
+    fn integrate_plain_par<G>(
+        &self,
+        d: usize,
+        lower: &[f64],
+        widths: &[f64],
+        volume: f64,
+        n: usize,
+        f: &G,
+    ) -> Result<QuadratureResult<f64>, QuadratureError>
+    where
+        G: Fn(&[f64]) -> f64 + Sync,
+    {
+        use rayon::prelude::*;
+
+        let num_chunks = rayon::current_num_threads().max(1);
+        let chunk_size = n / num_chunks;
+        let remainder = n % num_chunks;
+
+        // Each chunk uses an independent PRNG seeded from self.seed + chunk_id
+        let chunk_results: Vec<(f64, f64, usize)> = (0..num_chunks)
+            .into_par_iter()
+            .map(|chunk_id| {
+                let my_n = chunk_size + if chunk_id < remainder { 1 } else { 0 };
+                if my_n == 0 {
+                    return (0.0, 0.0, 0);
+                }
+
+                let mut rng = Xoshiro256pp::new(self.seed.wrapping_add(chunk_id as u64));
+                let mut x = vec![0.0; d];
+                let mut mean = 0.0;
+                let mut m2 = 0.0;
+
+                for i in 1..=my_n {
+                    for j in 0..d {
+                        x[j] = lower[j] + widths[j] * rng.next_f64();
+                    }
+                    let val = f(&x);
+                    let delta = val - mean;
+                    mean += delta / i as f64;
+                    let delta2 = val - mean;
+                    m2 += delta * delta2;
+                }
+
+                (mean * my_n as f64, m2, my_n)
+            })
+            .collect();
+
+        // Merge chunk results
+        let mut total_sum = 0.0;
+        let mut total_m2 = 0.0;
+        let mut total_n = 0usize;
+        for (sum, m2, count) in chunk_results {
+            total_sum += sum;
+            total_m2 += m2;
+            total_n += count;
+        }
+
+        let mean = total_sum / total_n as f64;
+        let variance = if total_n > 1 {
+            total_m2 / (total_n - 1) as f64
+        } else {
+            0.0
+        };
+        let std_error = (variance / total_n as f64).sqrt() * volume;
+
+        Ok(QuadratureResult {
+            value: volume * mean,
+            error_estimate: std_error,
+            num_evals: total_n,
+            converged: true,
+        })
+    }
+
+    #[cfg(feature = "parallel")]
+    fn integrate_qmc_par_sobol<G>(
+        &self,
+        d: usize,
+        lower: &[f64],
+        widths: &[f64],
+        volume: f64,
+        n: usize,
+        f: &G,
+    ) -> Result<QuadratureResult<f64>, QuadratureError>
+    where
+        G: Fn(&[f64]) -> f64 + Sync,
+    {
+        use rayon::prelude::*;
+
+        // Pre-generate all Sobol points (sequential — gray-code is inherently serial)
+        let mut sob = SobolSequence::new(d)?;
+        let mut points = vec![0.0; n * d];
+        let mut u = vec![0.0; d];
+        for i in 0..n {
+            sob.next_point(&mut u);
+            for j in 0..d {
+                points[i * d + j] = lower[j] + widths[j] * u[j];
+            }
+        }
+
+        // Parallel evaluation
+        let sum: f64 = (0..n)
+            .into_par_iter()
+            .map(|i| f(&points[i * d..(i + 1) * d]))
+            .sum();
+
+        let estimate = volume * sum / n as f64;
+
+        // Heuristic error: compare N/2 and N estimates
+        let half = n / 2;
+        let half_sum: f64 = (0..half)
+            .into_par_iter()
+            .map(|i| f(&points[i * d..(i + 1) * d]))
+            .sum();
+        let half_estimate = volume * half_sum / half as f64;
+        let error = (estimate - half_estimate).abs();
+
+        Ok(QuadratureResult {
+            value: estimate,
+            error_estimate: error,
+            num_evals: n + half,
+            converged: true,
+        })
+    }
+
+    #[cfg(feature = "parallel")]
+    fn integrate_qmc_par_halton<G>(
+        &self,
+        d: usize,
+        lower: &[f64],
+        widths: &[f64],
+        volume: f64,
+        n: usize,
+        f: &G,
+    ) -> Result<QuadratureResult<f64>, QuadratureError>
+    where
+        G: Fn(&[f64]) -> f64 + Sync,
+    {
+        use rayon::prelude::*;
+
+        // Pre-generate all Halton points
+        let mut hal = HaltonSequence::new(d)?;
+        let mut points = vec![0.0; n * d];
+        let mut u = vec![0.0; d];
+        for i in 0..n {
+            hal.next_point(&mut u);
+            for j in 0..d {
+                points[i * d + j] = lower[j] + widths[j] * u[j];
+            }
+        }
+
+        // Parallel evaluation
+        let sum: f64 = (0..n)
+            .into_par_iter()
+            .map(|i| f(&points[i * d..(i + 1) * d]))
+            .sum();
+
+        let estimate = volume * sum / n as f64;
+
+        // Heuristic error
+        let half = n / 2;
+        let half_sum: f64 = (0..half)
+            .into_par_iter()
+            .map(|i| f(&points[i * d..(i + 1) * d]))
+            .sum();
+        let half_estimate = volume * half_sum / half as f64;
+        let error = (estimate - half_estimate).abs();
+
+        Ok(QuadratureResult {
+            value: estimate,
+            error_estimate: error,
+            num_evals: n + half,
+            converged: true,
+        })
+    }
 }
 
 /// Convenience: quasi-Monte Carlo integration using Sobol sequences.
@@ -383,5 +599,60 @@ mod tests {
             .unwrap();
         // integral of (x+y) over [0,1]^2 = 1
         assert!((result.value - 1.0).abs() < 0.05, "value={}", result.value);
+    }
+
+    /// Parallel Sobol QMC produces identical results (deterministic sequence).
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn sobol_par_matches_sequential() {
+        let f = |x: &[f64]| (x[0] + x[1] + x[2]).exp();
+        let integrator = MonteCarloIntegrator::default()
+            .with_method(MCMethod::Sobol)
+            .with_samples(5000);
+        let seq = integrator.integrate(&[0.0; 3], &[1.0; 3], &f).unwrap();
+        let par = integrator.integrate_par(&[0.0; 3], &[1.0; 3], &f).unwrap();
+        assert!(
+            (seq.value - par.value).abs() < 1e-12,
+            "seq={}, par={}",
+            seq.value,
+            par.value
+        );
+    }
+
+    /// Parallel Halton QMC produces identical results (deterministic sequence).
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn halton_par_matches_sequential() {
+        let f = |x: &[f64]| x[0] * x[1];
+        let integrator = MonteCarloIntegrator::default()
+            .with_method(MCMethod::Halton)
+            .with_samples(5000);
+        let seq = integrator.integrate(&[0.0, 0.0], &[1.0, 1.0], &f).unwrap();
+        let par = integrator
+            .integrate_par(&[0.0, 0.0], &[1.0, 1.0], &f)
+            .unwrap();
+        assert!(
+            (seq.value - par.value).abs() < 1e-12,
+            "seq={}, par={}",
+            seq.value,
+            par.value
+        );
+    }
+
+    /// Parallel plain MC produces reasonable results (different PRNG split, so not identical).
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn plain_mc_par_reasonable() {
+        let integrator = MonteCarloIntegrator::default()
+            .with_method(MCMethod::Plain)
+            .with_samples(10000);
+        let result = integrator
+            .integrate_par(&[0.0, 0.0], &[1.0, 1.0], |x| x[0] * x[1])
+            .unwrap();
+        assert!(
+            (result.value - 0.25).abs() < 0.05,
+            "value={}",
+            result.value
+        );
     }
 }

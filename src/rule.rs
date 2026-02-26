@@ -64,4 +64,29 @@ impl<F: Float> QuadratureRule<F> {
         }
         total
     }
+
+    /// Parallel composite integration over \[a, b\] with `n_panels` subintervals.
+    ///
+    /// Identical to [`integrate_composite`](Self::integrate_composite) but evaluates
+    /// panels in parallel using rayon. Requires `F: Send + Sync` and `f: Fn(F) -> F + Sync`.
+    #[cfg(feature = "parallel")]
+    pub fn integrate_composite_par<G>(&self, a: F, b: F, n_panels: usize, f: G) -> F
+    where
+        F: Send + Sync,
+        G: Fn(F) -> F + Sync,
+    {
+        use rayon::prelude::*;
+
+        let n = F::from(n_panels).unwrap();
+        let panel_width = (b - a) / n;
+
+        (0..n_panels)
+            .into_par_iter()
+            .map(|i| {
+                let panel_a = a + F::from(i).unwrap() * panel_width;
+                let panel_b = panel_a + panel_width;
+                self.integrate(panel_a, panel_b, &f)
+            })
+            .reduce(F::zero, |a, b| a + b)
+    }
 }
