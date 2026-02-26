@@ -21,6 +21,18 @@ num-traits = "0.2"
 criterion = { version = "0.8", features = ["html_reports"] }
 approx = "0.5"
 
+[[bench]]
+name = "node_generation"
+harness = false
+
+[[bench]]
+name = "integration_1d"
+harness = false
+
+[[bench]]
+name = "cubature"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
