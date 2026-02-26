@@ -12,6 +12,11 @@ use crate::gauss_jacobi::ln_gamma;
 use crate::golub_welsch::golub_welsch;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Gauss-Laguerre quadrature rule.
 ///
 /// Integrates `f(x) * x^α * e^(-x)` over \[0, ∞) using n points.

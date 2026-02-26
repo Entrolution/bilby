@@ -10,6 +10,11 @@ use crate::error::QuadratureError;
 use crate::gauss_legendre::legendre_eval;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Gauss-Lobatto quadrature rule on \[-1, 1\].
 ///
 /// # Example
@@ -95,7 +100,7 @@ fn compute_lobatto(n: usize) -> (Vec<f64>, Vec<f64>) {
     let m = n - 2; // number of interior nodes
     for k in 0..m {
         // Initial guess: Chebyshev-type
-        let theta = std::f64::consts::PI * (k as f64 + 1.0) / (m as f64 + 1.0);
+        let theta = core::f64::consts::PI * (k as f64 + 1.0) / (m as f64 + 1.0);
         let mut x = -(theta.cos());
 
         // Newton on P'_{n-1}(x) = 0.

@@ -7,6 +7,9 @@
 
 use crate::error::QuadratureError;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+
 /// Number of bits used for Sobol sequence generation.
 const BITS: u32 = 32;
 

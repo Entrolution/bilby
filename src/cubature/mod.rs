@@ -38,6 +38,9 @@ pub use monte_carlo::{monte_carlo_integrate, MCMethod, MonteCarloIntegrator};
 pub use sparse_grid::{SparseGrid, SparseGridBasis};
 pub use tensor::TensorProductRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+
 /// A precomputed multi-dimensional cubature rule.
 ///
 /// Nodes are stored in a flat layout: node `i` occupies

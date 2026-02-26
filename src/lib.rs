@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 //! # bilby
 //!
 //! A high-performance numerical quadrature (integration) library for Rust.
@@ -32,7 +33,7 @@
 //! use bilby::{GaussKronrod, GKPair};
 //!
 //! let gk = GaussKronrod::new(GKPair::G7K15);
-//! let (estimate, error) = gk.integrate(0.0, std::f64::consts::PI, f64::sin);
+//! let (estimate, error) = gk.integrate(0.0, core::f64::consts::PI, f64::sin);
 //! assert!((estimate - 2.0).abs() < 1e-14);
 //! ```
 //!
@@ -41,7 +42,7 @@
 //! ```
 //! use bilby::adaptive_integrate;
 //!
-//! let result = adaptive_integrate(|x: f64| x.sin(), 0.0, std::f64::consts::PI, 1e-12).unwrap();
+//! let result = adaptive_integrate(|x: f64| x.sin(), 0.0, core::f64::consts::PI, 1e-12).unwrap();
 //! assert!((result.value - 2.0).abs() < 1e-12);
 //! assert!(result.is_converged());
 //! ```
@@ -53,8 +54,11 @@
 //!
 //! // Integral of exp(-x^2) over (-inf, inf) = sqrt(pi)
 //! let result = integrate_infinite(|x: f64| (-x * x).exp(), 1e-10).unwrap();
-//! assert!((result.value - std::f64::consts::PI.sqrt()).abs() < 1e-8);
+//! assert!((result.value - core::f64::consts::PI.sqrt()).abs() < 1e-8);
 //! ```
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
 pub mod adaptive;
 pub mod cauchy_pv;

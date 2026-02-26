@@ -148,7 +148,7 @@ where
 ///
 /// // Integral of exp(-x^2) over (-inf, inf) = sqrt(pi)
 /// let r = integrate_infinite(|x: f64| (-x * x).exp(), 1e-10).unwrap();
-/// assert!((r.value - std::f64::consts::PI.sqrt()).abs() < 1e-8);
+/// assert!((r.value - core::f64::consts::PI.sqrt()).abs() < 1e-8);
 /// ```
 pub fn integrate_infinite<G>(f: G, tol: f64) -> Result<QuadratureResult<f64>, QuadratureError>
 where
@@ -177,7 +177,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts::PI;
+    use core::f64::consts::PI;
 
     /// exp(-x) over [0, inf) = 1.
     #[test]

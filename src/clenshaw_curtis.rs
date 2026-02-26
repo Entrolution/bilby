@@ -12,6 +12,11 @@
 use crate::error::QuadratureError;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Clenshaw-Curtis quadrature rule on \[-1, 1\].
 ///
 /// # Example
@@ -70,7 +75,7 @@ impl ClenshawCurtis {
 /// For n == 1: midpoint rule (x=0, w=2).
 /// For n >= 2: nodes at x_k = cos(k π / (n-1)), weights via explicit formula.
 fn compute_clenshaw_curtis(n: usize) -> (Vec<f64>, Vec<f64>) {
-    use std::f64::consts::PI;
+    use core::f64::consts::PI;
 
     if n == 1 {
         return (vec![0.0], vec![2.0]);
@@ -209,7 +214,7 @@ mod tests {
     #[test]
     fn sin_integration() {
         let cc = ClenshawCurtis::new(21).unwrap();
-        let result = cc.rule().integrate(0.0, std::f64::consts::PI, f64::sin);
+        let result = cc.rule().integrate(0.0, core::f64::consts::PI, f64::sin);
         assert!((result - 2.0).abs() < 1e-12, "result={result}");
     }
 

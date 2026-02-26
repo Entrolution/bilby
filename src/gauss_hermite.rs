@@ -9,6 +9,11 @@ use crate::error::QuadratureError;
 use crate::golub_welsch::golub_welsch;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Gauss-Hermite quadrature rule.
 ///
 /// Integrates `f(x) * e^(-x²)` over (-∞, ∞) using n points.
@@ -21,7 +26,7 @@ use crate::rule::QuadratureRule;
 /// // Integral of e^(-x^2) over (-inf, inf) = sqrt(pi)
 /// let gh = GaussHermite::new(10).unwrap();
 /// let result: f64 = gh.nodes().iter().zip(gh.weights()).map(|(_, &w)| w).sum();
-/// assert!((result - std::f64::consts::PI.sqrt()).abs() < 1e-12);
+/// assert!((result - core::f64::consts::PI.sqrt()).abs() < 1e-12);
 /// ```
 #[derive(Debug, Clone)]
 pub struct GaussHermite {
@@ -72,7 +77,7 @@ impl GaussHermite {
 fn compute_hermite(n: usize) -> (Vec<f64>, Vec<f64>) {
     let diag = vec![0.0; n];
     let off_diag_sq: Vec<f64> = (1..n).map(|k| k as f64 / 2.0).collect();
-    let mu0 = std::f64::consts::PI.sqrt();
+    let mu0 = core::f64::consts::PI.sqrt();
 
     golub_welsch(&diag, &off_diag_sq, mu0)
 }
@@ -80,7 +85,7 @@ fn compute_hermite(n: usize) -> (Vec<f64>, Vec<f64>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts::PI;
+    use core::f64::consts::PI;
 
     #[test]
     fn zero_order() {

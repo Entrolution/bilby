@@ -13,6 +13,11 @@
 use crate::error::QuadratureError;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// A Gauss-Legendre quadrature rule.
 ///
 /// Exact for polynomials of degree 2n - 1, where n is the number of points.
@@ -107,7 +112,7 @@ fn compute_newton(n: usize, m: usize, nodes: &mut [f64], weights: &mut [f64]) {
     for i in 0..m {
         // Tricomi initial guess (1-indexed: k = i + 1)
         let k = (i + 1) as f64;
-        let theta = std::f64::consts::PI * (4.0 * k - 1.0) / (4.0 * nf + 2.0);
+        let theta = core::f64::consts::PI * (4.0 * k - 1.0) / (4.0 * nf + 2.0);
         let mut x = theta.cos();
 
         // Newton iteration on P_n(x) using the three-term recurrence
@@ -199,7 +204,7 @@ fn bessel_j0_zero(k: usize) -> f64 {
         BESSEL_J0_ZEROS[k - 1]
     } else {
         // McMahon's asymptotic expansion for large zeros of J_0
-        let z = std::f64::consts::PI * (k as f64 - 0.25);
+        let z = core::f64::consts::PI * (k as f64 - 0.25);
         let r = 1.0 / z;
         let r2 = r * r;
         z + r
@@ -504,7 +509,7 @@ mod tests {
     #[test]
     fn integrate_sin_on_zero_to_pi() {
         let gl = GaussLegendre::new(20).unwrap();
-        let result = gl.rule().integrate(0.0, std::f64::consts::PI, f64::sin);
+        let result = gl.rule().integrate(0.0, core::f64::consts::PI, f64::sin);
         assert!((result - 2.0).abs() < 1e-13, "got {result}, expected 2.0");
     }
 

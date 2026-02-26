@@ -2,6 +2,9 @@
 
 use num_traits::Float;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// A precomputed quadrature rule on the reference interval \[-1, 1\].
 ///
 /// Stores nodes and weights that can be reused across many integrations.

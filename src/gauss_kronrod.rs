@@ -14,6 +14,9 @@
 //! compile time.
 #![allow(clippy::excessive_precision)]
 
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// Detailed result from a single Gauss-Kronrod panel evaluation.
 ///
 /// Used internally by the adaptive integrator for error analysis.
@@ -78,7 +81,7 @@ impl GKPair {
 ///
 /// // Integrate sin(x) over [0, pi] with error estimate
 /// let (estimate, error) = gk.integrate(
-///     0.0, std::f64::consts::PI, |x: f64| x.sin()
+///     0.0, core::f64::consts::PI, |x: f64| x.sin()
 /// );
 /// assert!((estimate - 2.0).abs() < 1e-14);
 /// assert!(error < 1e-10);
@@ -596,7 +599,7 @@ mod tests {
     fn integrate_sin() {
         for pair in [GKPair::G7K15, GKPair::G10K21, GKPair::G15K31] {
             let gk = GaussKronrod::new(pair);
-            let (est, err) = gk.integrate(0.0, std::f64::consts::PI, f64::sin);
+            let (est, err) = gk.integrate(0.0, core::f64::consts::PI, f64::sin);
             assert!((est - 2.0).abs() < 1e-12, "{pair:?}: estimate = {est}");
             assert!(err < 1e-6, "{pair:?}: error estimate = {err}");
         }

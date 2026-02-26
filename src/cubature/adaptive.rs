@@ -7,8 +7,16 @@
 //! Practical for dimensions d ≤ ~7 (the rule uses 2^d vertex evaluations).
 //! For d = 1, delegates to the 1D adaptive integrator.
 
-use std::cmp::Ordering;
+use core::cmp::Ordering;
+
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use alloc::collections::BinaryHeap;
+#[cfg(feature = "std")]
 use std::collections::BinaryHeap;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 use crate::error::QuadratureError;
 use crate::result::QuadratureResult;
@@ -426,7 +434,7 @@ mod tests {
     #[test]
     fn delegates_to_1d() {
         let result =
-            adaptive_cubature(|x| x[0].sin(), &[0.0], &[std::f64::consts::PI], 1e-10).unwrap();
+            adaptive_cubature(|x| x[0].sin(), &[0.0], &[core::f64::consts::PI], 1e-10).unwrap();
         assert!((result.value - 2.0).abs() < 1e-10, "value={}", result.value);
     }
 

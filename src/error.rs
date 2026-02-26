@@ -27,4 +27,5 @@ impl fmt::Display for QuadratureError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for QuadratureError {}

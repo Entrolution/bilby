@@ -10,7 +10,7 @@
 //!
 //! // ∫₋₁¹ 1/√(1-x²) dx = π  (Chebyshev Type I weight)
 //! let result = weighted_integrate(|_| 1.0, WeightFunction::ChebyshevI, 20).unwrap();
-//! assert!((result - std::f64::consts::PI).abs() < 1e-12);
+//! assert!((result - core::f64::consts::PI).abs() < 1e-12);
 //! ```
 
 use crate::error::QuadratureError;
@@ -18,6 +18,9 @@ use crate::gauss_chebyshev::{GaussChebyshevFirstKind, GaussChebyshevSecondKind};
 use crate::gauss_hermite::GaussHermite;
 use crate::gauss_jacobi::GaussJacobi;
 use crate::gauss_laguerre::GaussLaguerre;
+
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// Known weight functions for product integration.
 #[derive(Debug, Clone)]
@@ -46,7 +49,7 @@ pub enum WeightFunction {
 /// let wi = WeightedIntegrator::new(WeightFunction::Hermite, 20).unwrap();
 /// // ∫₋∞^∞ 1 · e^(-x²) dx = √π
 /// let result = wi.integrate(|_| 1.0);
-/// assert!((result - std::f64::consts::PI.sqrt()).abs() < 1e-12);
+/// assert!((result - core::f64::consts::PI.sqrt()).abs() < 1e-12);
 /// ```
 #[derive(Debug, Clone)]
 pub struct WeightedIntegrator {
@@ -208,7 +211,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            (result - std::f64::consts::FRAC_PI_2).abs() < 1e-10,
+            (result - core::f64::consts::FRAC_PI_2).abs() < 1e-10,
             "result={result}"
         );
     }
@@ -234,7 +237,7 @@ mod tests {
         // ∫₋∞^∞ e^(-x²) dx = √π
         let result = weighted_integrate(|_| 1.0, WeightFunction::Hermite, 10).unwrap();
         assert!(
-            (result - std::f64::consts::PI.sqrt()).abs() < 1e-10,
+            (result - core::f64::consts::PI.sqrt()).abs() < 1e-10,
             "result={result}"
         );
     }
@@ -244,7 +247,7 @@ mod tests {
         // ∫₋₁¹ 1/√(1-x²) dx = π
         let result = weighted_integrate(|_| 1.0, WeightFunction::ChebyshevI, 20).unwrap();
         assert!(
-            (result - std::f64::consts::PI).abs() < 1e-12,
+            (result - core::f64::consts::PI).abs() < 1e-12,
             "result={result}"
         );
     }
@@ -254,7 +257,7 @@ mod tests {
         // ∫₋₁¹ √(1-x²) dx = π/2
         let result = weighted_integrate(|_| 1.0, WeightFunction::ChebyshevII, 20).unwrap();
         assert!(
-            (result - std::f64::consts::FRAC_PI_2).abs() < 1e-12,
+            (result - core::f64::consts::FRAC_PI_2).abs() < 1e-12,
             "result={result}"
         );
     }

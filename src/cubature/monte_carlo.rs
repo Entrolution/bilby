@@ -8,6 +8,11 @@ use crate::cubature::sobol::SobolSequence;
 use crate::error::QuadratureError;
 use crate::result::QuadratureResult;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// Monte Carlo integration method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MCMethod {

@@ -22,6 +22,11 @@ use crate::error::QuadratureError;
 use crate::gauss_legendre::GaussLegendre;
 use crate::result::QuadratureResult;
 
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// Type of oscillatory kernel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OscillatoryKernel {
@@ -120,7 +125,7 @@ impl OscillatoryIntegrator {
         // Step 1: Evaluate f at Clenshaw-Curtis nodes on [-1, 1]
         let f_vals: Vec<f64> = (0..=n)
             .map(|k| {
-                let t = (k as f64 * std::f64::consts::PI / n as f64).cos();
+                let t = (k as f64 * core::f64::consts::PI / n as f64).cos();
                 f(mid + half * t)
             })
             .collect();
@@ -220,7 +225,7 @@ impl OscillatoryIntegrator {
 /// c_n are halved).
 fn chebyshev_coefficients(f_vals: &[f64], n: usize) -> Vec<f64> {
     let mut coeffs = vec![0.0; n + 1];
-    let pi_n = std::f64::consts::PI / n as f64;
+    let pi_n = core::f64::consts::PI / n as f64;
 
     for (j, cj) in coeffs.iter_mut().enumerate() {
         let mut sum = 0.0;
@@ -342,7 +347,7 @@ mod tests {
     fn sin_trivial() {
         // ∫₀^π sin(x) dx = 2  (ω=1, f=1)
         let result =
-            integrate_oscillatory_sin(|_| 1.0, 0.0, std::f64::consts::PI, 1.0, 1e-10).unwrap();
+            integrate_oscillatory_sin(|_| 1.0, 0.0, core::f64::consts::PI, 1.0, 1e-10).unwrap();
         assert!((result.value - 2.0).abs() < 1e-6, "value={}", result.value);
     }
 
@@ -374,7 +379,7 @@ mod tests {
     fn cos_with_linear_f() {
         // ∫₀^π x cos(x) dx = [x sin(x) + cos(x)]₀^π = -1 - 1 = -2
         let result =
-            integrate_oscillatory_cos(|x| x, 0.0, std::f64::consts::PI, 1.0, 1e-8).unwrap();
+            integrate_oscillatory_cos(|x| x, 0.0, core::f64::consts::PI, 1.0, 1e-8).unwrap();
         assert!(
             (result.value - (-2.0)).abs() < 1e-4,
             "value={}",
@@ -389,7 +394,7 @@ mod tests {
         let r = 1.0;
         let i = omega;
         // e^(1+iω) = e * (cos(ω) + i sin(ω))
-        let e = std::f64::consts::E;
+        let e = core::f64::consts::E;
         let re_num = e * omega.cos() - 1.0;
         let im_num = e * omega.sin();
         let denom = r * r + i * i; // 1 + ω²

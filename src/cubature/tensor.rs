@@ -7,6 +7,9 @@ use crate::cubature::CubatureRule;
 use crate::error::QuadratureError;
 use crate::rule::QuadratureRule;
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+
 /// A tensor-product cubature rule formed from 1D quadrature rules.
 ///
 /// # Example

@@ -18,6 +18,9 @@ use crate::adaptive::AdaptiveIntegrator;
 use crate::error::QuadratureError;
 use crate::result::QuadratureResult;
 
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// Builder for Cauchy principal value integration.
 ///
 /// Computes PV ∫ₐᵇ f(x)/(x-c) dx via the subtraction technique:

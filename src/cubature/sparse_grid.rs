@@ -7,7 +7,15 @@
 //!
 //! Uses Clenshaw-Curtis rules as the nested 1D basis (the canonical choice).
 
-use std::collections::HashMap;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeMap;
+#[cfg(feature = "std")]
+use std::collections::BTreeMap;
 
 use crate::cubature::CubatureRule;
 use crate::error::QuadratureError;
@@ -101,7 +109,7 @@ fn cc_rule(n: usize) -> (Vec<f64>, Vec<f64>) {
 
     let nm1 = n - 1;
     let nm1_f = nm1 as f64;
-    let pi = std::f64::consts::PI;
+    let pi = core::f64::consts::PI;
 
     // Nodes: cos(k*pi/(n-1)) for k=0..n-1, reversed to ascending order
     let nodes: Vec<f64> = (0..n)
@@ -152,9 +160,9 @@ fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
     let cc_rules: Vec<(Vec<f64>, Vec<f64>)> =
         (0..=max_level).map(|l| cc_rule(cc_order(l))).collect();
 
-    // Accumulate points via HashMap for exact merging
+    // Accumulate points via BTreeMap for exact merging
     // Key: quantised d-dimensional point
-    let mut point_map: HashMap<Vec<i64>, (Vec<f64>, f64)> = HashMap::new();
+    let mut point_map: BTreeMap<Vec<i64>, (Vec<f64>, f64)> = BTreeMap::new();
 
     // Enumerate all multi-indices l = (l_0, ..., l_{d-1}) with each l_j >= 0
     // and |l| in [max(level, dim) - dim, level]
@@ -237,8 +245,8 @@ fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
     pairs.sort_by(|a, b| {
         a.0.iter()
             .zip(b.0.iter())
-            .find_map(|(x, y)| x.partial_cmp(y).filter(|o| *o != std::cmp::Ordering::Equal))
-            .unwrap_or(std::cmp::Ordering::Equal)
+            .find_map(|(x, y)| x.partial_cmp(y).filter(|o| *o != core::cmp::Ordering::Equal))
+            .unwrap_or(core::cmp::Ordering::Equal)
     });
 
     let n = pairs.len();
@@ -395,7 +403,7 @@ mod tests {
                 (x[0] + x[1] + x[2]).exp()
             });
         // Exact: (e-1)^3 ≈ 5.07321...
-        let e_minus_1 = std::f64::consts::E - 1.0;
+        let e_minus_1 = core::f64::consts::E - 1.0;
         let expected = e_minus_1 * e_minus_1 * e_minus_1;
         assert!(
             (result - expected).abs() < 1e-6,
