@@ -16,3 +16,6 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
+        # Tags select the Rust version to install, not the action version
