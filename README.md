@@ -22,7 +22,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-bilby = "0.1"
+bilby = "0.2"
 ```
 
 ```rust
@@ -49,7 +49,7 @@ bilby works in `no_std` environments (with `alloc`). Disable default features:
 
 ```toml
 [dependencies]
-bilby = { version = "0.1", default-features = false }
+bilby = { version = "0.2", default-features = false }
 ```
 
 ### Parallelism
@@ -58,7 +58,7 @@ Enable the `parallel` feature for parallel variants of integration methods:
 
 ```toml
 [dependencies]
-bilby = { version = "0.1", features = ["parallel"] }
+bilby = { version = "0.2", features = ["parallel"] }
 ```
 
 This provides `integrate_composite_par`, `integrate_par`, `integrate_box_par`,

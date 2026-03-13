@@ -205,7 +205,12 @@ impl GaussKronrod {
         let gauss_result = half_width * gauss_sum;
         abs_sum *= half_width.abs();
 
-        // QUADPACK error estimation heuristic
+        // QUADPACK error estimation heuristic.
+        // This is an intentional simplification of the full QUADPACK error
+        // formula (which also considers |f - I/(b-a)| for roundoff detection).
+        // The simplified version omits the roundoff term but retains the
+        // core (200·δ/S)^1.5 scaling that prevents error underestimation
+        // for smooth integrands. See Piessens et al. (1983), §2.2.
         let mut error = (estimate - gauss_result).abs();
         if abs_sum > 0.0 && error > 0.0 {
             error = abs_sum * (200.0 * error / abs_sum).min(1.0).powf(1.5);

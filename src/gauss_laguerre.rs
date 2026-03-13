@@ -46,18 +46,18 @@ impl GaussLaguerre {
     ///
     /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
     /// Returns [`QuadratureError::InvalidInput`] if `alpha <= -1` or `alpha`
-    /// is NaN.
+    /// is non-finite.
     pub fn new(n: usize, alpha: f64) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
         }
-        if alpha <= -1.0 || alpha.is_nan() {
+        if !alpha.is_finite() || alpha <= -1.0 {
             return Err(QuadratureError::InvalidInput(
-                "Laguerre parameter alpha must satisfy alpha > -1",
+                "Laguerre parameter alpha must be finite and satisfy alpha > -1",
             ));
         }
 
-        let (nodes, weights) = compute_laguerre(n, alpha);
+        let (nodes, weights) = compute_laguerre(n, alpha)?;
         Ok(Self {
             rule: QuadratureRule { nodes, weights },
             alpha,
@@ -81,7 +81,7 @@ impl_rule_accessors!(GaussLaguerre, nodes_doc: "Returns the nodes on \\[0, ∞).
 /// Jacobi matrix: diagonal = 2k+1+α, off-diagonal² = (k+1)(k+1+α).
 /// μ₀ = Γ(α+1).
 #[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
-fn compute_laguerre(n: usize, alpha: f64) -> (Vec<f64>, Vec<f64>) {
+fn compute_laguerre(n: usize, alpha: f64) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
     let diag: Vec<f64> = (0..n).map(|k| 2.0 * k as f64 + 1.0 + alpha).collect();
     let off_diag_sq: Vec<f64> = (1..n)
         .map(|k| {
@@ -142,6 +142,12 @@ mod tests {
         for i in 0..gl.order() - 1 {
             assert!(gl.nodes()[i] < gl.nodes()[i + 1]);
         }
+    }
+
+    #[test]
+    fn infinite_alpha_rejected() {
+        assert!(GaussLaguerre::new(5, f64::INFINITY).is_err());
+        assert!(GaussLaguerre::new(5, f64::NAN).is_err());
     }
 
     /// Polynomial exactness: integral of x^k e^(-x) over [0,inf) = k! = Gamma(k+1).

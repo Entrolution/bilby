@@ -74,7 +74,7 @@ impl CauchyPV {
     ///
     /// # Errors
     ///
-    /// Returns [`QuadratureError::DegenerateInterval`] if any bound or `c` is NaN.
+    /// Returns [`QuadratureError::DegenerateInterval`] if any bound or `c` is non-finite.
     /// Returns [`QuadratureError::InvalidInput`] if `c` is not strictly inside
     /// `(a, b)` or if `f(c)` is not finite.
     #[allow(clippy::many_single_char_names)] // a, b, c, f, g are conventional in quadrature
@@ -89,7 +89,7 @@ impl CauchyPV {
         G: Fn(f64) -> f64,
     {
         // Validate inputs
-        if a.is_nan() || b.is_nan() || c.is_nan() {
+        if !a.is_finite() || !b.is_finite() || !c.is_finite() {
             return Err(QuadratureError::DegenerateInterval);
         }
         let (lo, hi) = if a < b { (a, b) } else { (b, a) };
@@ -112,7 +112,7 @@ impl CauchyPV {
 
         // The subtracted integrand: g(x) = [f(x) - f(c)] / (x - c)
         // This has a removable singularity at x = c.
-        let guard = 1e-15 * (b - a);
+        let guard = 1e-15 * (b - a).abs();
         let g = |x: f64| -> f64 {
             if (x - c).abs() < guard {
                 0.0
@@ -152,7 +152,7 @@ impl CauchyPV {
 ///
 /// # Errors
 ///
-/// Returns [`QuadratureError::DegenerateInterval`] if any bound or `c` is NaN.
+/// Returns [`QuadratureError::DegenerateInterval`] if any bound or `c` is non-finite.
 /// Returns [`QuadratureError::InvalidInput`] if `c` is not strictly inside
 /// `(a, b)` or if `f(c)` is not finite.
 pub fn pv_integrate<G>(
@@ -237,8 +237,27 @@ mod tests {
     }
 
     #[test]
+    fn reversed_bounds() {
+        // PV ∫₁⁰ x²/(x - 0.3) dx = -[∫₀¹ x²/(x - 0.3) dx]
+        let exact = -(0.8 + 0.09 * (7.0_f64 / 3.0).ln());
+        let result = pv_integrate(|x| x * x, 1.0, 0.0, 0.3, 1e-10).unwrap();
+        assert!(
+            (result.value - exact).abs() < 1e-7,
+            "value={}, expected={exact}",
+            result.value
+        );
+    }
+
+    #[test]
     fn nan_inputs() {
         assert!(pv_integrate(|x| x, f64::NAN, 1.0, 0.5, 1e-10).is_err());
         assert!(pv_integrate(|x| x, 0.0, 1.0, f64::NAN, 1e-10).is_err());
+    }
+
+    #[test]
+    fn inf_inputs_rejected() {
+        assert!(pv_integrate(|x| x, f64::INFINITY, 1.0, 0.5, 1e-10).is_err());
+        assert!(pv_integrate(|x| x, 0.0, f64::NEG_INFINITY, 0.5, 1e-10).is_err());
+        assert!(pv_integrate(|x| x, 0.0, 1.0, f64::INFINITY, 1e-10).is_err());
     }
 }

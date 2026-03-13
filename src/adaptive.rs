@@ -180,6 +180,13 @@ impl AdaptiveIntegrator {
     where
         G: Fn(f64) -> f64,
     {
+        // Validate interval bounds
+        for &(a, b) in intervals {
+            if a.is_nan() || b.is_nan() || a.is_infinite() || b.is_infinite() {
+                return Err(QuadratureError::DegenerateInterval);
+            }
+        }
+
         // Validate tolerances
         if self.abs_tol <= 0.0 && self.rel_tol <= 0.0 {
             return Err(QuadratureError::InvalidInput(
@@ -588,5 +595,34 @@ mod tests {
             forward.value,
             reverse.value
         );
+    }
+
+    /// NaN bounds are rejected.
+    #[test]
+    fn nan_bounds_rejected() {
+        assert!(adaptive_integrate(f64::sin, f64::NAN, 1.0, 1e-10).is_err());
+        assert!(adaptive_integrate(f64::sin, 0.0, f64::NAN, 1e-10).is_err());
+    }
+
+    /// Infinite bounds are rejected.
+    #[test]
+    fn infinite_bounds_rejected() {
+        assert!(adaptive_integrate(f64::sin, f64::INFINITY, 1.0, 1e-10).is_err());
+        assert!(adaptive_integrate(f64::sin, 0.0, f64::NEG_INFINITY, 1e-10).is_err());
+    }
+
+    /// NaN break point is rejected.
+    #[test]
+    fn nan_break_point_rejected() {
+        assert!(adaptive_integrate_with_breaks(f64::sin, 0.0, 1.0, &[f64::NAN], 1e-10).is_err());
+    }
+
+    /// max_evals smaller than one GK panel is rejected.
+    #[test]
+    fn max_evals_too_small() {
+        let r = AdaptiveIntegrator::default()
+            .with_max_evals(1)
+            .integrate(0.0, 1.0, f64::sin);
+        assert!(r.is_err());
     }
 }

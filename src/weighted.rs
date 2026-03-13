@@ -166,16 +166,27 @@ impl WeightedIntegrator {
         G: Fn(f64) -> f64,
     {
         match &self.weight {
-            WeightFunction::Jacobi { .. }
-            | WeightFunction::ChebyshevI
-            | WeightFunction::ChebyshevII => {
+            WeightFunction::Jacobi { alpha, beta } => {
                 // Affine map: x in [a,b] <-> t in [-1,1]
-                // x = (b-a)/2 * t + (a+b)/2
-                // w(x) dx in terms of t includes a Jacobian factor
-                // For Jacobi weight: (1-t)^a (1+t)^b maps directly
+                // x = half*t + mid, so (b-x) = half*(1-t), (x-a) = half*(1+t)
+                // ∫_a^b (b-x)^α (x-a)^β f(x) dx = half^(α+β+1) * ∫_{-1}^1 w(t) f(half*t+mid) dt
                 let half = 0.5 * (b - a);
                 let mid = 0.5 * (a + b);
-                self.integrate(|t| f(half * t + mid)) * half.powi(1)
+                self.integrate(|t| f(half * t + mid)) * half.powf(alpha + beta + 1.0)
+            }
+            WeightFunction::ChebyshevI => {
+                // ChebyshevI is Jacobi(-0.5, -0.5): factor = half^0 = 1
+                // ∫_a^b f(x)/√((b-x)(x-a)) dx = ∫_{-1}^1 f(half*t+mid)/√(1-t²) dt
+                let half = 0.5 * (b - a);
+                let mid = 0.5 * (a + b);
+                self.integrate(|t| f(half * t + mid))
+            }
+            WeightFunction::ChebyshevII => {
+                // ChebyshevII is Jacobi(0.5, 0.5): factor = half^2
+                // ∫_a^b √((b-x)(x-a)) f(x) dx = half² * ∫_{-1}^1 √(1-t²) f(half*t+mid) dt
+                let half = 0.5 * (b - a);
+                let mid = 0.5 * (a + b);
+                self.integrate(|t| f(half * t + mid)) * half * half
             }
             WeightFunction::LogWeight => {
                 // Map (0,1] to (a,b]: x = a + (b-a)*u, log singularity at a
@@ -405,6 +416,51 @@ mod tests {
         assert!(
             (natural - remapped).abs() < 1e-14,
             "natural={natural}, remapped={remapped}"
+        );
+    }
+
+    #[test]
+    fn integrate_over_jacobi_on_0_4() {
+        // Jacobi(0.5, 0.5) on [0,4]: ∫₀⁴ (4-x)^0.5 (x-0)^0.5 f(x) dx
+        // With f=1: ∫₀⁴ √(x(4-x)) dx = ∫₀⁴ √(4x - x²) dx = 2π (semicircle area)
+        let wi = WeightedIntegrator::new(
+            WeightFunction::Jacobi {
+                alpha: 0.5,
+                beta: 0.5,
+            },
+            30,
+        )
+        .unwrap();
+        let result = wi.integrate_over(0.0, 4.0, |_| 1.0);
+        assert!(
+            (result - 2.0 * core::f64::consts::PI).abs() < 1e-6,
+            "result={result}, expected={}",
+            2.0 * core::f64::consts::PI
+        );
+    }
+
+    #[test]
+    fn integrate_over_chebyshev_i_on_0_4() {
+        // ChebyshevI on [0,4]: ∫₀⁴ f(x)/√((4-x)(x-0)) dx
+        // With f=1: ∫₀⁴ 1/√(4x-x²) dx = π (half=2, factor=1)
+        let wi = WeightedIntegrator::new(WeightFunction::ChebyshevI, 20).unwrap();
+        let result = wi.integrate_over(0.0, 4.0, |_| 1.0);
+        assert!(
+            (result - core::f64::consts::PI).abs() < 1e-10,
+            "result={result}, expected π"
+        );
+    }
+
+    #[test]
+    fn integrate_over_chebyshev_ii_on_0_4() {
+        // ChebyshevII on [0,4]: ∫₀⁴ √((4-x)·x) f(x) dx
+        // With f=1: ∫₀⁴ √(4x-x²) dx = 2π (semicircle area, half=2, factor=half²=4)
+        let wi = WeightedIntegrator::new(WeightFunction::ChebyshevII, 20).unwrap();
+        let result = wi.integrate_over(0.0, 4.0, |_| 1.0);
+        assert!(
+            (result - 2.0 * core::f64::consts::PI).abs() < 1e-6,
+            "result={result}, expected={}",
+            2.0 * core::f64::consts::PI
         );
     }
 

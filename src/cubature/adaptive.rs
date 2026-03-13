@@ -79,7 +79,7 @@ impl AdaptiveCubature {
     ///
     /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
     /// different lengths or are empty. Returns [`QuadratureError::DegenerateInterval`]
-    /// if any bound is NaN.
+    /// if any bound is non-finite.
     pub fn integrate<G>(
         &self,
         lower: &[f64],
@@ -95,20 +95,24 @@ impl AdaptiveCubature {
                 "lower and upper must have equal nonzero length",
             ));
         }
+        if d > 30 {
+            return Err(QuadratureError::InvalidInput(
+                "adaptive cubature is limited to at most 30 dimensions",
+            ));
+        }
         for i in 0..d {
-            if lower[i].is_nan() || upper[i].is_nan() {
+            if !lower[i].is_finite() || !upper[i].is_finite() {
                 return Err(QuadratureError::DegenerateInterval);
             }
         }
 
         if d == 1 {
-            // Delegate to 1D adaptive integrator
-            return crate::adaptive::adaptive_integrate(
-                |x: f64| f(&[x]),
-                lower[0],
-                upper[0],
-                self.abs_tol,
-            );
+            // Delegate to 1D adaptive integrator, forwarding all settings
+            return crate::adaptive::AdaptiveIntegrator::default()
+                .with_abs_tol(self.abs_tol)
+                .with_rel_tol(self.rel_tol)
+                .with_max_evals(self.max_evals)
+                .integrate(lower[0], upper[0], |x: f64| f(&[x]));
         }
 
         let mut heap: BinaryHeap<SubRegion> = BinaryHeap::new();
@@ -135,7 +139,7 @@ impl AdaptiveCubature {
             let Some(worst) = heap.pop() else { break };
 
             global_estimate -= worst.estimate;
-            global_error -= worst.error;
+            global_error = (global_error - worst.error).max(0.0);
 
             // Bisect along the split axis
             let axis = worst.split_axis;
@@ -197,7 +201,7 @@ impl AdaptiveCubature {
 ///
 /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
 /// different lengths or are empty. Returns [`QuadratureError::DegenerateInterval`]
-/// if any bound is NaN.
+/// if any bound is non-finite.
 pub fn adaptive_cubature<G>(
     f: G,
     lower: &[f64],
@@ -398,6 +402,22 @@ mod tests {
     fn invalid_input() {
         assert!(adaptive_cubature(|_| 1.0, &[], &[], 1e-8).is_err());
         assert!(adaptive_cubature(|_| 1.0, &[0.0], &[1.0, 2.0], 1e-8).is_err());
+    }
+
+    #[test]
+    fn inf_bounds_rejected() {
+        assert!(adaptive_cubature(|_| 1.0, &[f64::INFINITY], &[1.0], 1e-8).is_err());
+        assert!(adaptive_cubature(|_| 1.0, &[0.0], &[f64::NEG_INFINITY], 1e-8).is_err());
+        assert!(
+            adaptive_cubature(|_| 1.0, &[0.0, f64::INFINITY], &[1.0, 1.0], 1e-8).is_err()
+        );
+    }
+
+    #[test]
+    fn dimension_cap() {
+        let lower = vec![0.0; 31];
+        let upper = vec![1.0; 31];
+        assert!(adaptive_cubature(|_| 1.0, &lower, &upper, 1e-8).is_err());
     }
 
     /// Constant function over [0,1]^2.

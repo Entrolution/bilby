@@ -223,21 +223,24 @@ impl MonteCarloIntegrator {
         let estimate = volume * sum / n as f64;
 
         // Heuristic error estimate: compare N/2 and N estimates
-        let half_sum = {
-            let mut seq2 = S::new(d)?;
-            let half = n / 2;
-            let mut sm = 0.0;
-            for _ in 0..half {
-                seq2.next_point(&mut u);
-                for j in 0..d {
-                    x[j] = lower[j] + widths[j] * u[j];
+        let half = n / 2;
+        let error = if half == 0 {
+            f64::INFINITY
+        } else {
+            let half_sum = {
+                let mut seq2 = S::new(d)?;
+                let mut sm = 0.0;
+                for _ in 0..half {
+                    seq2.next_point(&mut u);
+                    for j in 0..d {
+                        x[j] = lower[j] + widths[j] * u[j];
+                    }
+                    sm += f(&x);
                 }
-                sm += f(&x);
-            }
-            volume * sm / half as f64
+                volume * sm / half as f64
+            };
+            (estimate - half_sum).abs()
         };
-
-        let error = (estimate - half_sum).abs();
 
         Ok(QuadratureResult {
             value: estimate,
@@ -352,13 +355,22 @@ impl MonteCarloIntegrator {
             })
             .collect();
 
-        // Merge chunk results
+        // Merge chunk results using parallel Welford formula
         let mut total_sum = 0.0;
         let mut total_m2 = 0.0;
         let mut total_n = 0usize;
         for (sum, m2, count) in chunk_results {
+            if total_n > 0 && count > 0 {
+                let mean_a = total_sum / total_n as f64;
+                let mean_b = sum / count as f64;
+                let delta = mean_b - mean_a;
+                total_m2 += m2
+                    + delta * delta * (total_n as f64 * count as f64)
+                        / (total_n + count) as f64;
+            } else {
+                total_m2 += m2;
+            }
             total_sum += sum;
-            total_m2 += m2;
             total_n += count;
         }
 
@@ -420,12 +432,16 @@ impl MonteCarloIntegrator {
 
         // Heuristic error: compare N/2 and N estimates
         let half = n / 2;
-        let half_sum: f64 = (0..half)
-            .into_par_iter()
-            .map(|i| f(&points[i * d..(i + 1) * d]))
-            .sum();
-        let half_estimate = volume * half_sum / half as f64;
-        let error = (estimate - half_estimate).abs();
+        let error = if half == 0 {
+            f64::INFINITY
+        } else {
+            let half_sum: f64 = (0..half)
+                .into_par_iter()
+                .map(|i| f(&points[i * d..(i + 1) * d]))
+                .sum();
+            let half_estimate = volume * half_sum / half as f64;
+            (estimate - half_estimate).abs()
+        };
 
         Ok(QuadratureResult {
             value: estimate,
