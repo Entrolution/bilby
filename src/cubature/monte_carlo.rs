@@ -364,9 +364,8 @@ impl MonteCarloIntegrator {
                 let mean_a = total_sum / total_n as f64;
                 let mean_b = sum / count as f64;
                 let delta = mean_b - mean_a;
-                total_m2 += m2
-                    + delta * delta * (total_n as f64 * count as f64)
-                        / (total_n + count) as f64;
+                total_m2 +=
+                    m2 + delta * delta * (total_n as f64 * count as f64) / (total_n + count) as f64;
             } else {
                 total_m2 += m2;
             }

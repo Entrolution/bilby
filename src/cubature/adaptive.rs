@@ -408,9 +408,7 @@ mod tests {
     fn inf_bounds_rejected() {
         assert!(adaptive_cubature(|_| 1.0, &[f64::INFINITY], &[1.0], 1e-8).is_err());
         assert!(adaptive_cubature(|_| 1.0, &[0.0], &[f64::NEG_INFINITY], 1e-8).is_err());
-        assert!(
-            adaptive_cubature(|_| 1.0, &[0.0, f64::INFINITY], &[1.0, 1.0], 1e-8).is_err()
-        );
+        assert!(adaptive_cubature(|_| 1.0, &[0.0, f64::INFINITY], &[1.0, 1.0], 1e-8).is_err());
     }
 
     #[test]

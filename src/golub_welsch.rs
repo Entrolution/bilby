@@ -63,10 +63,7 @@ pub(crate) fn golub_welsch(
 
     // Sort ascending by node
     let mut pairs: Vec<_> = d.into_iter().zip(weights).collect();
-    pairs.sort_by(|a, b| {
-        a.0.partial_cmp(&b.0)
-            .unwrap_or(core::cmp::Ordering::Equal)
-    });
+    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(core::cmp::Ordering::Equal));
     Ok(pairs.into_iter().unzip())
 }
 

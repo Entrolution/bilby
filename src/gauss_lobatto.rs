@@ -137,10 +137,7 @@ fn compute_lobatto(n: usize) -> (Vec<f64>, Vec<f64>) {
 
     // Sort ascending (should already be, but ensure)
     let mut pairs: Vec<_> = nodes.into_iter().zip(weights).collect();
-    pairs.sort_by(|a, b| {
-        a.0.partial_cmp(&b.0)
-            .unwrap_or(core::cmp::Ordering::Equal)
-    });
+    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(core::cmp::Ordering::Equal));
     let (nodes, weights) = pairs.into_iter().unzip();
 
     (nodes, weights)

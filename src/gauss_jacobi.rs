@@ -98,7 +98,11 @@ impl_rule_accessors!(GaussJacobi, nodes_doc: "Returns the nodes on \\[-1, 1\\]."
 ///
 /// μ₀ = 2^(α+β+1) Γ(α+1)Γ(β+1) / Γ(α+β+2)
 #[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
-fn compute_jacobi(n: usize, alpha: f64, beta: f64) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
+fn compute_jacobi(
+    n: usize,
+    alpha: f64,
+    beta: f64,
+) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
     let ab = alpha + beta;
 
     // Diagonal: α_k = (β²-α²) / ((2k+ab)(2k+ab+2))
