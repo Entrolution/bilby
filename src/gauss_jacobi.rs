@@ -53,18 +53,18 @@ impl GaussJacobi {
     ///
     /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
     /// Returns [`QuadratureError::InvalidInput`] if `alpha <= -1`, `beta <= -1`,
-    /// or either parameter is NaN.
+    /// or either parameter is non-finite.
     pub fn new(n: usize, alpha: f64, beta: f64) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
         }
-        if alpha <= -1.0 || beta <= -1.0 || alpha.is_nan() || beta.is_nan() {
+        if !alpha.is_finite() || !beta.is_finite() || alpha <= -1.0 || beta <= -1.0 {
             return Err(QuadratureError::InvalidInput(
-                "Jacobi parameters must satisfy alpha > -1 and beta > -1",
+                "Jacobi parameters must be finite and satisfy alpha > -1 and beta > -1",
             ));
         }
 
-        let (nodes, weights) = compute_jacobi(n, alpha, beta);
+        let (nodes, weights) = compute_jacobi(n, alpha, beta)?;
         Ok(Self {
             rule: QuadratureRule { nodes, weights },
             alpha,
@@ -98,7 +98,11 @@ impl_rule_accessors!(GaussJacobi, nodes_doc: "Returns the nodes on \\[-1, 1\\]."
 ///
 /// μ₀ = 2^(α+β+1) Γ(α+1)Γ(β+1) / Γ(α+β+2)
 #[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
-fn compute_jacobi(n: usize, alpha: f64, beta: f64) -> (Vec<f64>, Vec<f64>) {
+fn compute_jacobi(
+    n: usize,
+    alpha: f64,
+    beta: f64,
+) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
     let ab = alpha + beta;
 
     // Diagonal: α_k = (β²-α²) / ((2k+ab)(2k+ab+2))
@@ -170,7 +174,7 @@ pub(crate) fn ln_gamma(x: f64) -> f64 {
     if x < 0.5 {
         // Reflection formula
         let z = 1.0 - x;
-        core::f64::consts::PI.ln() - (core::f64::consts::PI * x).sin().ln() - ln_gamma(z)
+        core::f64::consts::PI.ln() - (core::f64::consts::PI * x).sin().abs().ln() - ln_gamma(z)
     } else {
         let z = x - 1.0;
         let mut sum = COEFF[0];
@@ -197,6 +201,8 @@ mod tests {
         assert!(GaussJacobi::new(5, -1.0, 0.0).is_err());
         assert!(GaussJacobi::new(5, 0.0, -1.5).is_err());
         assert!(GaussJacobi::new(5, f64::NAN, 0.0).is_err());
+        assert!(GaussJacobi::new(5, f64::INFINITY, 0.0).is_err());
+        assert!(GaussJacobi::new(5, 0.0, f64::NEG_INFINITY).is_err());
     }
 
     /// alpha=beta=0 should recover Gauss-Legendre.
@@ -316,5 +322,20 @@ mod tests {
         let gj = GaussJacobi::new(20, -0.5, -0.5).unwrap();
         let sum: f64 = gj.weights().iter().sum();
         assert!((sum - PI).abs() < 1e-10, "sum={sum}, expected={PI}");
+    }
+
+    /// Exercises the ln_gamma reflection formula with negative alpha and beta.
+    /// Weight sum should equal B(0.2, 0.2) * 2^{-0.6} = Gamma(0.2)^2 / Gamma(0.4) * 2^{-0.6}
+    #[test]
+    fn jacobi_negative_alpha_beta() {
+        let alpha = -0.8;
+        let beta = -0.8;
+        let gj = GaussJacobi::new(20, alpha, beta).unwrap();
+        let sum: f64 = gj.weights().iter().sum();
+        let expected = jacobi_integral(alpha, beta);
+        assert!(
+            (sum - expected).abs() < 1e-8,
+            "alpha={alpha}, beta={beta}: sum={sum}, expected={expected}"
+        );
     }
 }

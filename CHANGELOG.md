@@ -5,7 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - Unreleased
+## [0.2.0] - 2026-03-13
+
+### Changed
+
+- **Breaking:** `golub_welsch()` now returns `Result`, propagating QL non-convergence as `QuadratureError::InvalidInput` instead of silently returning inaccurate nodes/weights. All internal `compute_*` functions in `gauss_jacobi`, `gauss_laguerre`, `gauss_hermite`, and `gauss_radau` propagate accordingly. Public constructors already returned `Result`, so most callers are unaffected.
+- **Breaking:** `GaussLobatto::new(0)` now returns `QuadratureError::ZeroOrder` (previously `InvalidInput`). `GaussLobatto::new(1)` still returns `InvalidInput`.
+- Input validation for `tanh_sinh`, `oscillatory`, `cauchy_pv`, and `cubature::adaptive` now rejects `±Inf` bounds (not just `NaN`). Error variant is unchanged (`DegenerateInterval`).
+- `CubatureRule::new` assertion promoted from `debug_assert_eq!` to `assert_eq!`.
+- Tanh-sinh non-convergence error estimate now uses the difference between the last two level estimates instead of a fabricated `tol * 10` value.
+- QUADPACK error estimation heuristic in `gauss_kronrod` documented as an intentional simplification of the full formula.
+
+### Fixed
+
+- `ln_gamma` reflection formula: `.sin().ln()` → `.sin().abs().ln()` prevents `NaN` for negative arguments where `sin(π·x)` is negative (affects Gauss-Jacobi with certain α, β near negative integers).
+- Newton iteration in Gauss-Lobatto interior node computation now clamps iterates to `(-1+ε, 1-ε)`, preventing division by zero in the `P''` formula when an iterate lands on ±1.
+- `partial_cmp().unwrap()` in `golub_welsch` and `gauss_lobatto` sort replaced with `.unwrap_or(Ordering::Equal)` to avoid panics on NaN nodes.
+- Adaptive cubature `global_error` subtraction clamped to `max(0.0)` to prevent negative error estimates from floating-point cancellation.
+
+### Added
+
+- Dimension cap (d ≤ 30) for adaptive cubature — returns `InvalidInput` for higher dimensions where Genz-Malik's `2^d` vertex evaluations would be impractical.
+- New tests: infinity rejection (tanh-sinh, oscillatory, Cauchy PV, cubature), dimension cap, Lobatto error variant splitting, tanh-sinh non-fabricated error, Jacobi negative α/β exercising the reflection path.
+
+## [0.1.0] - 2026-03-12
 
 Initial release of bilby.
 

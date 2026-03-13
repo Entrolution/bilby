@@ -48,7 +48,7 @@ impl GaussRadau {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
         }
-        let (nodes, weights) = compute_radau_left(n);
+        let (nodes, weights) = compute_radau_left(n)?;
         Ok(Self {
             rule: QuadratureRule { nodes, weights },
         })
@@ -66,7 +66,7 @@ impl GaussRadau {
             return Err(QuadratureError::ZeroOrder);
         }
         // Right Radau is the reflection of left Radau
-        let (nodes_left, weights_left) = compute_radau_left(n);
+        let (nodes_left, weights_left) = compute_radau_left(n)?;
         let nodes: Vec<f64> = nodes_left.iter().rev().map(|&x| -x).collect();
         let weights: Vec<f64> = weights_left.iter().rev().copied().collect();
         Ok(Self {
@@ -83,9 +83,9 @@ impl_rule_accessors!(GaussRadau, nodes_doc: "Returns the nodes on \\[-1, 1\\].")
 /// Legendre Jacobi matrix. The last diagonal element is modified so
 /// that -1 is an eigenvalue of the tridiagonal matrix.
 #[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
-fn compute_radau_left(n: usize) -> (Vec<f64>, Vec<f64>) {
+fn compute_radau_left(n: usize) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
     if n == 1 {
-        return (vec![-1.0], vec![2.0]);
+        return Ok((vec![-1.0], vec![2.0]));
     }
 
     // Legendre recurrence coefficients:

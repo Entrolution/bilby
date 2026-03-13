@@ -44,7 +44,7 @@ impl GaussHermite {
             return Err(QuadratureError::ZeroOrder);
         }
 
-        let (nodes, weights) = compute_hermite(n);
+        let (nodes, weights) = compute_hermite(n)?;
         Ok(Self {
             rule: QuadratureRule { nodes, weights },
         })
@@ -61,7 +61,7 @@ impl_rule_accessors!(GaussHermite, nodes_doc: "Returns the nodes on (-∞, ∞).
 /// Jacobi matrix: diagonal = 0, off-diagonal² = (k+1)/2 for k=0..n-2.
 /// μ₀ = √π.
 #[allow(clippy::cast_precision_loss)] // n is a quadrature order, always small enough for exact f64
-fn compute_hermite(n: usize) -> (Vec<f64>, Vec<f64>) {
+fn compute_hermite(n: usize) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
     let diag = vec![0.0; n];
     let off_diag_sq: Vec<f64> = (1..n).map(|k| k as f64 / 2.0).collect();
     let mu0 = core::f64::consts::PI.sqrt();

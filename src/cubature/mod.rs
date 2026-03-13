@@ -64,7 +64,7 @@ impl CubatureRule {
     /// `nodes_flat` must have length `weights.len() * dim`.
     #[must_use]
     pub fn new(nodes_flat: Vec<f64>, weights: Vec<f64>, dim: usize) -> Self {
-        debug_assert_eq!(nodes_flat.len(), weights.len() * dim);
+        assert_eq!(nodes_flat.len(), weights.len() * dim);
         Self {
             nodes: nodes_flat,
             weights,

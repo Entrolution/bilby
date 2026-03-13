@@ -79,7 +79,7 @@ impl TanhSinh {
     ///
     /// # Errors
     ///
-    /// Returns [`QuadratureError::DegenerateInterval`] if `a` or `b` is NaN.
+    /// Returns [`QuadratureError::DegenerateInterval`] if `a` or `b` is non-finite.
     #[allow(clippy::many_single_char_names)] // a, b, f, h, k, t, u are conventional in tanh-sinh quadrature
     #[allow(clippy::cast_precision_loss)] // k is a small loop index, always exact in f64
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // (7.0/h).ceil() is a small positive value, safe to cast to usize
@@ -93,7 +93,7 @@ impl TanhSinh {
     where
         G: Fn(f64) -> f64,
     {
-        if a.is_nan() || b.is_nan() {
+        if !a.is_finite() || !b.is_finite() {
             return Err(QuadratureError::DegenerateInterval);
         }
         if (b - a).abs() < f64::EPSILON {
@@ -110,6 +110,7 @@ impl TanhSinh {
         let pi_2 = core::f64::consts::FRAC_PI_2;
 
         let mut total_evals = 0usize;
+        let mut prev_prev_estimate: f64 = 0.0;
         let mut prev_estimate: f64 = 0.0;
         let mut h: f64 = 1.0;
 
@@ -234,14 +235,13 @@ impl TanhSinh {
                 }
             }
 
+            prev_prev_estimate = prev_estimate;
             prev_estimate = estimate;
         }
 
-        // Did not converge within max_levels
+        // Did not converge within max_levels — use last two estimates for error
         let error = if self.max_levels > 0 {
-            // Can't easily recompute the last level difference,
-            // but prev_estimate is our best value
-            self.abs_tol.max(self.rel_tol * prev_estimate.abs()) * 10.0
+            (prev_estimate - prev_prev_estimate).abs()
         } else {
             f64::INFINITY
         };
@@ -269,7 +269,7 @@ impl TanhSinh {
 ///
 /// # Errors
 ///
-/// Returns [`QuadratureError::DegenerateInterval`] if `a` or `b` is NaN.
+/// Returns [`QuadratureError::DegenerateInterval`] if `a` or `b` is non-finite.
 pub fn tanh_sinh_integrate<G>(
     f: G,
     a: f64,
@@ -370,11 +370,35 @@ mod tests {
     }
 
     #[test]
+    fn inf_bounds_rejected() {
+        assert!(tanh_sinh_integrate(|x| x, f64::INFINITY, 1.0, 1e-10).is_err());
+        assert!(tanh_sinh_integrate(|x| x, 0.0, f64::NEG_INFINITY, 1e-10).is_err());
+    }
+
+    #[test]
     fn non_convergence() {
         let result = TanhSinh::default()
             .with_max_levels(0)
             .integrate(0.0, 1.0, |x| 1.0 / x.sqrt())
             .unwrap();
         assert!(!result.converged);
+    }
+
+    #[test]
+    fn non_convergence_error_not_fabricated() {
+        // With enough levels to produce two estimates but not enough to converge,
+        // the error estimate should be derived from the last two level estimates
+        // rather than a fabricated multiple of tolerance.
+        let tol = 1e-15;
+        let result = TanhSinh::default()
+            .with_max_levels(2)
+            .with_abs_tol(tol)
+            .with_rel_tol(tol)
+            .integrate(0.0, 1.0, |x| 1.0 / x.sqrt())
+            .unwrap();
+        assert!(!result.converged);
+        assert!(result.error_estimate.is_finite());
+        // The error should NOT be a fabricated tol * 10
+        assert!((result.error_estimate - tol * 10.0).abs() > 1e-20);
     }
 }

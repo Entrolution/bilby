@@ -45,6 +45,9 @@ impl GaussLobatto {
     ///
     /// Returns [`QuadratureError::InvalidInput`] if `n` is less than 2.
     pub fn new(n: usize) -> Result<Self, QuadratureError> {
+        if n == 0 {
+            return Err(QuadratureError::ZeroOrder);
+        }
         if n < 2 {
             return Err(QuadratureError::InvalidInput(
                 "Gauss-Lobatto requires at least 2 points",
@@ -119,6 +122,7 @@ fn compute_lobatto(n: usize) -> (Vec<f64>, Vec<f64>) {
             }
             let dx = dp_nm1 / d2p;
             x -= dx;
+            x = x.clamp(-1.0 + f64::EPSILON, 1.0 - f64::EPSILON);
             if dx.abs() < 1e-15 * (1.0 + x.abs()) {
                 break;
             }
@@ -133,7 +137,7 @@ fn compute_lobatto(n: usize) -> (Vec<f64>, Vec<f64>) {
 
     // Sort ascending (should already be, but ensure)
     let mut pairs: Vec<_> = nodes.into_iter().zip(weights).collect();
-    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(core::cmp::Ordering::Equal));
     let (nodes, weights) = pairs.into_iter().unzip();
 
     (nodes, weights)
@@ -148,6 +152,22 @@ mod tests {
         assert!(GaussLobatto::new(0).is_err());
         assert!(GaussLobatto::new(1).is_err());
         assert!(GaussLobatto::new(2).is_ok());
+    }
+
+    #[test]
+    fn zero_order_returns_zero_order_error() {
+        assert_eq!(
+            GaussLobatto::new(0).unwrap_err(),
+            QuadratureError::ZeroOrder
+        );
+    }
+
+    #[test]
+    fn one_point_returns_invalid_input() {
+        assert!(matches!(
+            GaussLobatto::new(1).unwrap_err(),
+            QuadratureError::InvalidInput(_)
+        ));
     }
 
     #[test]

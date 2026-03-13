@@ -97,7 +97,7 @@ impl OscillatoryIntegrator {
     /// # Errors
     ///
     /// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
-    /// is NaN. May also propagate errors from the adaptive fallback when
+    /// is non-finite. May also propagate errors from the adaptive fallback when
     /// `|omega * (b - a) / 2|` is small.
     #[allow(clippy::many_single_char_names)] // a, b, f, n are conventional in quadrature
     #[allow(clippy::similar_names)] // sum_c_half / sum_s_half are intentionally parallel names
@@ -111,7 +111,7 @@ impl OscillatoryIntegrator {
     where
         G: Fn(f64) -> f64,
     {
-        if a.is_nan() || b.is_nan() || self.omega.is_nan() {
+        if !a.is_finite() || !b.is_finite() || !self.omega.is_finite() {
             return Err(QuadratureError::DegenerateInterval);
         }
         if (b - a).abs() < f64::EPSILON {
@@ -336,7 +336,7 @@ fn modified_chebyshev_moments(theta: f64, n: usize) -> (Vec<f64>, Vec<f64>) {
 /// # Errors
 ///
 /// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
-/// is NaN.
+/// is non-finite.
 pub fn integrate_oscillatory_sin<G>(
     f: G,
     a: f64,
@@ -368,7 +368,7 @@ where
 /// # Errors
 ///
 /// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
-/// is NaN.
+/// is non-finite.
 pub fn integrate_oscillatory_cos<G>(
     f: G,
     a: f64,
@@ -476,6 +476,13 @@ mod tests {
     #[test]
     fn nan_input() {
         assert!(integrate_oscillatory_sin(|_| 1.0, f64::NAN, 1.0, 10.0, 1e-10).is_err());
+    }
+
+    #[test]
+    fn inf_inputs_rejected() {
+        assert!(integrate_oscillatory_sin(|_| 1.0, f64::INFINITY, 1.0, 10.0, 1e-10).is_err());
+        assert!(integrate_oscillatory_cos(|_| 1.0, 0.0, f64::NEG_INFINITY, 10.0, 1e-10).is_err());
+        assert!(integrate_oscillatory_sin(|_| 1.0, 0.0, 1.0, f64::INFINITY, 1e-10).is_err());
     }
 
     #[test]

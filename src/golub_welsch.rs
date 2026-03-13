@@ -9,6 +9,8 @@
 //! Reference: Golub & Welsch (1969), "Calculation of Gauss Quadrature Rules",
 //! Mathematics of Computation 23(106), 221-230.
 
+use crate::error::QuadratureError;
+
 #[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
 #[cfg(not(feature = "std"))]
@@ -23,15 +25,24 @@ use num_traits::Float as _;
 ///
 /// # Returns
 /// (nodes, weights) sorted ascending by node.
-pub(crate) fn golub_welsch(diag: &[f64], off_diag_sq: &[f64], mu0: f64) -> (Vec<f64>, Vec<f64>) {
+///
+/// # Errors
+///
+/// Returns [`QuadratureError::InvalidInput`] if the QL algorithm fails to
+/// converge (e.g. due to degenerate recurrence coefficients).
+pub(crate) fn golub_welsch(
+    diag: &[f64],
+    off_diag_sq: &[f64],
+    mu0: f64,
+) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
     let n = diag.len();
     assert_eq!(off_diag_sq.len(), n.saturating_sub(1));
 
     if n == 0 {
-        return (vec![], vec![]);
+        return Ok((vec![], vec![]));
     }
     if n == 1 {
-        return (vec![diag[0]], vec![mu0]);
+        return Ok((vec![diag[0]], vec![mu0]));
     }
 
     let mut d = diag.to_vec();
@@ -42,14 +53,18 @@ pub(crate) fn golub_welsch(diag: &[f64], off_diag_sq: &[f64], mu0: f64) -> (Vec<
     let mut z = vec![0.0; n];
     z[0] = 1.0;
 
-    symmetric_tridiag_eig(&mut d, &mut e, &mut z);
+    if !symmetric_tridiag_eig(&mut d, &mut e, &mut z) {
+        return Err(QuadratureError::InvalidInput(
+            "QL eigenvalue algorithm did not converge",
+        ));
+    }
 
     let weights: Vec<f64> = z.iter().map(|&zk| mu0 * zk * zk).collect();
 
     // Sort ascending by node
     let mut pairs: Vec<_> = d.into_iter().zip(weights).collect();
-    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    pairs.into_iter().unzip()
+    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(core::cmp::Ordering::Equal));
+    Ok(pairs.into_iter().unzip())
 }
 
 /// Modify the last diagonal element of a Jacobi matrix so that a prescribed
@@ -93,16 +108,21 @@ pub(crate) fn radau_modify(diag: &mut [f64], off_diag_sq: &[f64], x0: f64) {
 ///
 /// On entry: `d` = diagonal, `e` = off-diagonal (length n-1).
 /// On exit: `d` = eigenvalues (unsorted), `z` = first row of eigenvector matrix.
+///
+/// Returns `true` if all eigenvalues converged, `false` if the QL iteration
+/// hit the maximum iteration count for any eigenvalue.
 #[allow(clippy::many_single_char_names)] // d, e, z, m, l, g, r, s, c, p, f, b are standard names in tridiagonal eigenvalue algorithms
-fn symmetric_tridiag_eig(d: &mut [f64], e: &mut [f64], z: &mut [f64]) {
+fn symmetric_tridiag_eig(d: &mut [f64], e: &mut [f64], z: &mut [f64]) -> bool {
     let n = d.len();
     if n <= 1 {
-        return;
+        return true;
     }
 
     // Pad e with a trailing zero for convenience
     let mut e_ext = vec![0.0; n];
     e_ext[..n - 1].copy_from_slice(e);
+
+    let mut converged = true;
 
     for l in 0..n {
         let mut iter_count = 0u32;
@@ -122,6 +142,7 @@ fn symmetric_tridiag_eig(d: &mut [f64], e: &mut [f64], z: &mut [f64]) {
 
             iter_count += 1;
             if iter_count > 200 {
+                converged = false;
                 break;
             }
 
@@ -170,6 +191,8 @@ fn symmetric_tridiag_eig(d: &mut [f64], e: &mut [f64], z: &mut [f64]) {
             }
         }
     }
+
+    converged
 }
 
 #[cfg(test)]
@@ -189,7 +212,7 @@ mod tests {
             .collect();
         let mu0 = 2.0;
 
-        let (nodes, weights) = golub_welsch(&diag, &off_diag_sq, mu0);
+        let (nodes, weights) = golub_welsch(&diag, &off_diag_sq, mu0).unwrap();
 
         // Weight sum should be 2
         let sum: f64 = weights.iter().sum();
@@ -220,7 +243,7 @@ mod tests {
         let mu0 = 2.0;
 
         radau_modify(&mut diag, &off_diag_sq, -1.0);
-        let (nodes, weights) = golub_welsch(&diag, &off_diag_sq, mu0);
+        let (nodes, weights) = golub_welsch(&diag, &off_diag_sq, mu0).unwrap();
 
         assert!((nodes[0] - (-1.0)).abs() < 1e-14);
         assert!((nodes[1] - 1.0 / 3.0).abs() < 1e-14);
