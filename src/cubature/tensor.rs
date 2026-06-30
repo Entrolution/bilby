@@ -51,9 +51,22 @@ impl TensorProductRule {
 
         let dim = rules_1d.len();
         let orders: Vec<usize> = rules_1d.iter().map(|r| r.order()).collect();
-        let total_points: usize = orders.iter().product();
+        // Checked product: a wraparound here would otherwise yield a wrong (often
+        // empty) rule returned as Ok — e.g. isotropic(order-2, 64) overflows to 0
+        // and would integrate everything to zero.
+        let total_points = orders
+            .iter()
+            .try_fold(1usize, |acc, &o| acc.checked_mul(o))
+            .ok_or(QuadratureError::InvalidInput(
+                "tensor-product point count overflows usize",
+            ))?;
+        let flat_len = total_points
+            .checked_mul(dim)
+            .ok_or(QuadratureError::InvalidInput(
+                "tensor-product node array length overflows usize",
+            ))?;
 
-        let mut nodes_flat = Vec::with_capacity(total_points * dim);
+        let mut nodes_flat = Vec::with_capacity(flat_len);
         let mut weights = Vec::with_capacity(total_points);
         let mut indices = vec![0usize; dim];
 
@@ -124,6 +137,15 @@ mod tests {
         let tp = TensorProductRule::new(&[gl5.rule(), gl3.rule()]).unwrap();
         assert_eq!(tp.num_points(), 15);
         assert_eq!(tp.dim(), 2);
+    }
+
+    #[test]
+    fn point_count_overflow_rejected() {
+        // An order-2 rule in 64 dims is 2^64 points, which overflows usize.
+        // It must error rather than wrapping to 0 and returning an empty rule
+        // that integrates everything to zero.
+        let gl = GaussLegendre::new(2).unwrap();
+        assert!(TensorProductRule::isotropic(gl.rule(), 64).is_err());
     }
 
     #[test]

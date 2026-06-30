@@ -108,10 +108,19 @@ impl SobolSequence {
     ///
     /// # Panics
     ///
-    /// Panics if `point.len()` is less than the sequence dimension.
+    /// Panics if `point.len()` is less than the sequence dimension, or if the
+    /// sequence is exhausted: the 32-bit construction has period 2³², so at
+    /// most 2³² − 1 points can be generated.
     pub fn next_point(&mut self, point: &mut [f64]) {
         assert!(point.len() >= self.dim);
         self.index += 1;
+        // Beyond the period, (index - 1) has BITS trailing ones, so the
+        // gray-code bit index would reach BITS and read past the direction
+        // numbers. Fail with a clear message rather than an out-of-bounds panic.
+        assert!(
+            self.index < (1u64 << BITS),
+            "Sobol sequence exhausted: at most 2^32 - 1 points are available"
+        );
 
         // Find the rightmost zero bit of (index - 1) (gray-code position)
         let c = (self.index - 1).trailing_ones() as usize;
@@ -130,7 +139,16 @@ impl SobolSequence {
     ///
     /// After calling `skip(n)`, the next call to `next_point` produces
     /// the (n+1)-th point.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n >= 2³² − 1`: the gray-code reconstruction only consumes the
+    /// low 32 bits, and the subsequent `next_point` must stay within the period.
     pub fn skip(&mut self, n: u64) {
+        assert!(
+            n < (1u64 << BITS) - 1,
+            "Sobol sequence exhausted: at most 2^32 - 1 points are available"
+        );
         let b = BITS as usize;
         // Reset state
         self.state.fill(0);
@@ -439,6 +457,15 @@ mod tests {
     fn invalid_dim() {
         assert!(SobolSequence::new(0).is_err());
         assert!(SobolSequence::new(41).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "exhausted")]
+    fn skip_past_period_panics() {
+        // The 32-bit construction has period 2^32; skipping to the boundary must
+        // panic with a clear message rather than silently aliasing high bits.
+        let mut sob = SobolSequence::new(2).unwrap();
+        sob.skip((1u64 << BITS) - 1);
     }
 
     #[test]

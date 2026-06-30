@@ -115,6 +115,18 @@ impl AdaptiveCubature {
                 .integrate(lower[0], upper[0], |x: f64| f(&[x]));
         }
 
+        // A single Genz-Malik region costs 2^d + 2d² + 2d + 1 evaluations, all
+        // spent before max_evals is next checked. Refuse if even one region
+        // cannot fit the budget, so a high dimension with a small budget fails
+        // cleanly instead of spending ~2^d evaluations (a de-facto hang at large
+        // d). 1 << d is safe: d <= 30 was enforced above.
+        let region_evals = (1usize << d) + 2 * d * d + 2 * d + 1;
+        if region_evals > self.max_evals {
+            return Err(QuadratureError::InvalidInput(
+                "max_evals is smaller than one Genz-Malik region; reduce the dimension or raise max_evals",
+            ));
+        }
+
         let mut heap: BinaryHeap<SubRegion> = BinaryHeap::new();
         let mut total_evals = 0usize;
 
@@ -315,6 +327,11 @@ where
     let mut sum_3 = 0.0;
     let mut fourth_diffs = vec![0.0; d]; // for split axis selection
 
+    // Genz-Malik fourth divided difference: the λ₂²/λ₄² ratio cancels the
+    // second-derivative term so the axis with the largest fourth-derivative
+    // (non-polynomial) variation is chosen. λ₂²/λ₄² = (9/70)/(9/10) = 1/7.
+    let l2_over_l4_sq = lambda2 * lambda2 / (lambda4 * lambda4);
+
     for i in 0..d {
         x[i] = midpoints[i] + lambda2 * half_widths[i];
         let f_plus2 = f(&x);
@@ -328,9 +345,12 @@ where
         let f_minus4 = f(&x);
         sum_3 += f_plus4 + f_minus4;
 
-        // Fourth difference for split axis selection
-        fourth_diffs[i] = (f_plus2 + f_minus2 - 2.0 * f_center).abs()
-            - (f_plus4 + f_minus4 - 2.0 * f_center).abs();
+        // Fourth divided difference for split-axis selection: a single absolute
+        // value of the ratio-weighted second differences (NOT a difference of
+        // two absolute values, which cancels no derivative).
+        let delta2 = f_plus2 + f_minus2 - 2.0 * f_center;
+        let delta4 = f_plus4 + f_minus4 - 2.0 * f_center;
+        fourth_diffs[i] = (delta2 - l2_over_l4_sq * delta4).abs();
 
         x[i] = midpoints[i]; // restore
         num_evals += 4;
@@ -416,6 +436,27 @@ mod tests {
         let lower = vec![0.0; 31];
         let upper = vec![1.0; 31];
         assert!(adaptive_cubature(|_| 1.0, &lower, &upper, 1e-8).is_err());
+    }
+
+    #[test]
+    fn high_dim_small_budget_rejected() {
+        // A single Genz-Malik region at d=20 costs 2^20 ≈ 1.05e6 evals, above
+        // this budget. It must error cleanly rather than spending ~2^d
+        // evaluations (a de-facto hang) before the budget is checked.
+        let lower = vec![0.0; 20];
+        let upper = vec![1.0; 20];
+        let r = AdaptiveCubature::default()
+            .with_max_evals(100_000)
+            .integrate(&lower, &upper, |_| 1.0);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn split_axis_targets_the_varying_dimension() {
+        // f varies only along axis 0; the fourth-difference criterion must pick
+        // axis 0. The former |δ₂|-|δ₄| form picked a constant axis for convex f.
+        let detail = genz_malik_eval(3, &[0.0; 3], &[1.0; 3], &|x: &[f64]| (3.0 * x[0]).exp());
+        assert_eq!(detail.split_axis, 0, "split_axis={}", detail.split_axis);
     }
 
     /// Constant function over [0,1]^2.
