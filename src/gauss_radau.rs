@@ -100,7 +100,7 @@ fn compute_radau_left(n: usize) -> Result<(Vec<f64>, Vec<f64>), QuadratureError>
         .collect();
 
     // Modify the last diagonal element so that -1 is an eigenvalue
-    radau_modify(&mut diag, &off_diag_sq, -1.0);
+    radau_modify(&mut diag, &off_diag_sq, -1.0)?;
 
     let mu0 = 2.0; // integral of 1 over [-1, 1]
     golub_welsch(&diag, &off_diag_sq, mu0)
