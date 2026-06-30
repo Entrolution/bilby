@@ -11,7 +11,8 @@ use core::fmt;
 pub enum QuadratureError {
     /// The requested order `n` is zero.
     ZeroOrder,
-    /// The integration interval is degenerate (NaN bounds).
+    /// The integration interval is degenerate (a bound is non-finite, i.e. NaN
+    /// or infinite).
     DegenerateInterval,
     /// An input parameter is invalid.
     InvalidInput(&'static str),
@@ -27,5 +28,6 @@ impl fmt::Display for QuadratureError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for QuadratureError {}
+// `core::error::Error` (stable since Rust 1.81; MSRV is 1.93) is available
+// without `std`, so the impl is unconditional and `no_std` users get it too.
+impl core::error::Error for QuadratureError {}

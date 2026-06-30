@@ -43,7 +43,9 @@ impl GaussRadau {
     ///
     /// # Errors
     ///
-    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero, or
+    /// [`QuadratureError::InvalidInput`] if the endpoint-modification step or
+    /// the eigensolver fails.
     pub fn left(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -60,7 +62,9 @@ impl GaussRadau {
     ///
     /// # Errors
     ///
-    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero, or
+    /// [`QuadratureError::InvalidInput`] if the endpoint-modification step or
+    /// the eigensolver fails.
     pub fn right(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);

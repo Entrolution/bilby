@@ -84,8 +84,11 @@ impl<F: Float> QuadratureRule<F> {
 
     /// Parallel composite integration over \[a, b\] with `n_panels` subintervals.
     ///
-    /// Identical to [`integrate_composite`](Self::integrate_composite) but evaluates
-    /// panels in parallel using rayon. Requires `F: Send + Sync` and `f: Fn(F) -> F + Sync`.
+    /// Equivalent to [`integrate_composite`](Self::integrate_composite) up to
+    /// floating-point summation order (rayon's tree reduction sums panels in a
+    /// different order, so results can differ in the last ULPs), but evaluates
+    /// panels in parallel using rayon. Requires `F: Send + Sync` and
+    /// `f: Fn(F) -> F + Sync`.
     ///
     /// # Panics
     ///

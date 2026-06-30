@@ -287,8 +287,8 @@ struct GMDetail {
 /// 1. Center: 1 point
 /// 2. Along each axis at ±λ₂: 2d points
 /// 3. Along each axis at ±λ₃: 2d points
-/// 4. All vertices at (±λ₄, ..., ±λ₄): 2^d points
-/// 5. All pairs of axes at (±λ₅, ±λ₅, 0, ...): 2d(d-1) points
+/// 4. All vertices at (±λ₅, ..., ±λ₅): 2^d points
+/// 5. All pairs of axes at (±λ₄, ±λ₄, 0, ...): 2d(d-1) points
 ///
 /// Total: 1 + 4d + 2^d + 2d(d-1) = 2^d + 2d² + 2d + 1 evaluations.
 fn genz_malik_eval<G>(d: usize, lower: &[f64], upper: &[f64], f: &G) -> GMDetail
