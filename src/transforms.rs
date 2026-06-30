@@ -69,7 +69,16 @@ where
         let one_minus_t = 1.0 - t;
         let x = a + t / one_minus_t;
         let jacobian = 1.0 / (one_minus_t * one_minus_t);
-        f(x) * jacobian
+        // Jacobian overflow just inside the endpoint can give 0*inf = NaN or
+        // finite*inf = inf; treat a non-finite contribution as a zero tail (the
+        // QUADPACK qagi guard) so one bad panel cannot poison the estimate. Note
+        // this also masks a genuine non-finite f at an interior mapped point.
+        let v = f(x) * jacobian;
+        if v.is_finite() {
+            v
+        } else {
+            0.0
+        }
     };
 
     AdaptiveIntegrator::default()
@@ -121,7 +130,16 @@ where
         let one_minus_t = 1.0 - t;
         let x = b - t / one_minus_t;
         let jacobian = 1.0 / (one_minus_t * one_minus_t);
-        f(x) * jacobian
+        // Jacobian overflow just inside the endpoint can give 0*inf = NaN or
+        // finite*inf = inf; treat a non-finite contribution as a zero tail (the
+        // QUADPACK qagi guard) so one bad panel cannot poison the estimate. Note
+        // this also masks a genuine non-finite f at an interior mapped point.
+        let v = f(x) * jacobian;
+        if v.is_finite() {
+            v
+        } else {
+            0.0
+        }
     };
 
     AdaptiveIntegrator::default()
@@ -163,7 +181,16 @@ where
         let one_minus_t2 = 1.0 - t2;
         let x = t / one_minus_t2;
         let jacobian = (1.0 + t2) / (one_minus_t2 * one_minus_t2);
-        f(x) * jacobian
+        // Jacobian overflow just inside the endpoint can give 0*inf = NaN or
+        // finite*inf = inf; treat a non-finite contribution as a zero tail (the
+        // QUADPACK qagi guard) so one bad panel cannot poison the estimate. Note
+        // this also masks a genuine non-finite f at an interior mapped point.
+        let v = f(x) * jacobian;
+        if v.is_finite() {
+            v
+        } else {
+            0.0
+        }
     };
 
     AdaptiveIntegrator::default()
@@ -178,6 +205,17 @@ where
 mod tests {
     use super::*;
     use core::f64::consts::PI;
+
+    /// A non-finite integrand value at a reachable mapped node must not poison
+    /// the whole estimate. f is +inf beyond |x| = 50, which the outer nodes of
+    /// the very first panel already reach (|x| up to ~113); the finiteness guard
+    /// masks that contribution to 0 so the result stays finite instead of NaN.
+    #[test]
+    fn non_finite_integrand_contribution_does_not_poison() {
+        let f = |x: f64| if x.abs() > 50.0 { f64::INFINITY } else { 1.0 };
+        let r = integrate_infinite(f, 1e-8).unwrap();
+        assert!(r.value.is_finite(), "value={}", r.value);
+    }
 
     /// exp(-x) over [0, inf) = 1.
     #[test]
