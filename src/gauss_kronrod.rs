@@ -137,11 +137,11 @@ impl GaussKronrod {
         (detail.estimate, detail.error)
     }
 
-    /// Internal detailed integration returning full QUADPACK output.
+    /// Internal detailed Gauss-Kronrod evaluation of a single panel.
     ///
-    /// Returns estimate, error, integral of |f|, and integral of |f - mean|
-    /// over the interval. The adaptive integrator uses these for roundoff
-    /// detection.
+    /// Returns the Kronrod estimate and the QUADPACK error estimate, which
+    /// scales the Gauss-Kronrod difference against `resasc` (the integral of
+    /// `|f - mean|` over the panel).
     #[allow(clippy::too_many_lines)] // single cohesive QUADPACK algorithm, splitting would obscure the logic
     #[allow(clippy::float_cmp)] // exact comparison for degenerate zero-width interval
     pub(crate) fn integrate_detail<G>(&self, a: f64, b: f64, f: G) -> GKDetail
@@ -161,7 +161,14 @@ impl GaussKronrod {
 
         let mut kronrod_sum = 0.0_f64;
         let mut gauss_sum = 0.0_f64;
-        let mut abs_sum = 0.0_f64;
+
+        // Function values per abscissa, retained for the resasc second pass
+        // below: resasc needs the Kronrod mean, which is only known after the
+        // full sum. The Kronrod order is at most 51 (G25-K51), so xgk has at
+        // most 26 entries — a fixed stack buffer avoids a per-panel allocation.
+        debug_assert!(n <= 32);
+        let mut fv1 = [0.0_f64; 32];
+        let mut fv2 = [0.0_f64; 32];
 
         // QUADPACK convention: xgk is stored from outermost to center.
         // Gauss nodes are at xgk[1], xgk[3], xgk[5], ... (odd indices, 0-based).
@@ -177,8 +184,8 @@ impl GaussKronrod {
             if xk == 0.0 {
                 // Center node
                 let fx = f(midpoint);
+                fv1[i] = fx;
                 kronrod_sum += wk * fx;
-                abs_sum += wk * fx.abs();
 
                 // Center is a Gauss node for odd Gauss order (G7, G15, G25)
                 if self.pair.gauss_order() % 2 == 1 && gauss_idx < self.wg.len() {
@@ -188,10 +195,11 @@ impl GaussKronrod {
                 // Symmetric pair ±xk
                 let f_pos = f(midpoint + half_width * xk);
                 let f_neg = f(midpoint - half_width * xk);
+                fv1[i] = f_pos;
+                fv2[i] = f_neg;
                 let f_sum = f_pos + f_neg;
 
                 kronrod_sum += wk * f_sum;
-                abs_sum += wk * (f_pos.abs() + f_neg.abs());
 
                 // Gauss nodes are at odd indices (0-based): 1, 3, 5, ...
                 if i % 2 == 1 && gauss_idx < self.wg.len() {
@@ -203,17 +211,32 @@ impl GaussKronrod {
 
         let estimate = half_width * kronrod_sum;
         let gauss_result = half_width * gauss_sum;
-        abs_sum *= half_width.abs();
 
-        // QUADPACK error estimation heuristic.
-        // This is an intentional simplification of the full QUADPACK error
-        // formula (which also considers |f - I/(b-a)| for roundoff detection).
-        // The simplified version omits the roundoff term but retains the
-        // core (200·δ/S)^1.5 scaling that prevents error underestimation
-        // for smooth integrands. See Piessens et al. (1983), §2.2.
+        // resasc = ∫|f − f̄| over the panel, where the Kronrod mean f̄ = reskh
+        // is half the unscaled Kronrod sum (the reference weights sum to 2).
+        // The error is scaled against resasc — the variation of f about its
+        // mean — NOT resabs (= abs_sum, ∫|f|): a constant offset is integrated
+        // exactly by both rules and must not deflate the error estimate.
+        let reskh = kronrod_sum * 0.5;
+        let mut resasc = 0.0_f64;
+        for i in 0..n {
+            let wk = self.wgk[i];
+            if self.xgk[i] == 0.0 {
+                resasc += wk * (fv1[i] - reskh).abs();
+            } else {
+                resasc += wk * ((fv1[i] - reskh).abs() + (fv2[i] - reskh).abs());
+            }
+        }
+        resasc *= half_width.abs();
+
+        // QUADPACK error estimate (Piessens et al. 1983, dqk15.f): scale the
+        // raw Gauss-Kronrod difference δ by resasc via the (200·δ/resasc)^1.5
+        // law, capped at resasc itself (dmin1(1.0, …)) so the estimate can never
+        // exceed the panel's total variation. A constant integrand gives
+        // resasc ≈ 0 and δ ≈ 0, so the error is left at the vanishing δ.
         let mut error = (estimate - gauss_result).abs();
-        if abs_sum > 0.0 && error > 0.0 {
-            error = abs_sum * (200.0 * error / abs_sum).min(1.0).powf(1.5);
+        if resasc != 0.0 && error > 0.0 {
+            error = resasc * (200.0 * error / resasc).powf(1.5).min(1.0);
         }
 
         GKDetail { estimate, error }
@@ -643,6 +666,45 @@ mod tests {
             "x^12 estimate = {est}, expected {expected}"
         );
         assert!(err < 1e-10, "x^12 error estimate = {err}");
+    }
+
+    /// The error estimate scales against resasc = ∫|f − mean|, so a large
+    /// constant offset (integrated exactly by both rules) must not change it.
+    /// With the previous resabs (∫|f|) scaling, the offset deflated the error
+    /// by ~√(∫|f|), so the adaptive integrator converged prematurely on
+    /// offset-heavy integrands.
+    #[test]
+    fn error_estimate_independent_of_dc_offset() {
+        let gk = GaussKronrod::new(GKPair::G7K15);
+        let varying = gk.integrate_detail(0.0, 1.0, |x| (20.0 * x).sin());
+        let offset = gk.integrate_detail(0.0, 1.0, |x| 1.0e5 + (20.0 * x).sin());
+        assert!(varying.error > 0.0, "expected a nonzero error estimate");
+        // Both error estimates reflect only the varying part; the 1e5 offset
+        // (deflation factor ~316 under the old scaling) must not shrink it.
+        assert!(
+            offset.error > 0.5 * varying.error && offset.error < 2.0 * varying.error,
+            "varying.error={}, offset.error={}",
+            varying.error,
+            offset.error
+        );
+    }
+
+    /// QUADPACK invariant (dqk15.f `dmin1(1.0, …)`): the panel error estimate
+    /// never exceeds resasc = ∫|f − mean| ≤ (b − a)·(max f − min f). On a panel
+    /// that G7-K15 resolves poorly, the (200·δ/resasc)^1.5 factor saturates its
+    /// cap; that cap must be 1·resasc, not 1000·resasc.
+    #[test]
+    fn error_estimate_bounded_by_variation_on_rough_panel() {
+        let gk = GaussKronrod::new(GKPair::G7K15);
+        // sin(50x) over [0,1] is badly under-resolved by 15 nodes, so the cap
+        // engages. |sin| ≤ 1 ⇒ resasc ≤ 1·2 = 2, so a correct estimate ≤ 2;
+        // with a 1000× cap it would be in the hundreds.
+        let d = gk.integrate_detail(0.0, 1.0, |x| (50.0 * x).sin());
+        assert!(
+            d.error <= 2.0,
+            "error estimate {} exceeds the panel's total variation",
+            d.error
+        );
     }
 
     /// Degenerate interval gives zero.

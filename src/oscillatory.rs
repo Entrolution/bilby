@@ -97,7 +97,10 @@ impl OscillatoryIntegrator {
     /// # Errors
     ///
     /// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
-    /// is non-finite. May also propagate errors from the adaptive fallback when
+    /// is non-finite. Returns [`QuadratureError::InvalidInput`] if `omega` is so
+    /// large that the Filon-Clenshaw-Curtis moment quadrature would need an
+    /// impractical number of nodes (`|omega·(b − a)/2|` above ~100,000). May
+    /// also propagate errors from the adaptive fallback when
     /// `|omega * (b - a) / 2|` is small.
     #[allow(clippy::many_single_char_names)] // a, b, f, n are conventional in quadrature
     #[allow(clippy::similar_names)] // sum_c_half / sum_s_half are intentionally parallel names
@@ -127,6 +130,14 @@ impl OscillatoryIntegrator {
         let mid = 0.5 * (a + b);
         let theta = self.omega * half;
 
+        // `b - a` can overflow to ±inf even when a and b are individually finite
+        // (an interval wider than f64::MAX); with omega == 0 that yields
+        // theta = 0 * inf = NaN, which would slip past both the small-theta
+        // fallback and the moment-node guard below into a silent NaN result.
+        if !theta.is_finite() {
+            return Err(QuadratureError::DegenerateInterval);
+        }
+
         // For small theta, fall back to adaptive integration
         if theta.abs() < 2.0 {
             return self.adaptive_fallback(a, b, &f);
@@ -134,6 +145,21 @@ impl OscillatoryIntegrator {
 
         // Filon-Clenshaw-Curtis method
         let n = self.order.max(4);
+
+        // The Chebyshev moments ∫T_j(x)·{cos,sin}(θx) dx are evaluated with a
+        // Gauss-Legendre rule whose node count must exceed the kernel bandwidth
+        // ~|θ| to resolve the oscillation. Bound that node count: an extreme ω
+        // would otherwise force a multi-gigabyte allocation, and the f64→usize
+        // cast of θ inside `modified_chebyshev_moments` could saturate and then
+        // overflow. The check is done in f64 before any cast, so an infinite or
+        // huge θ is rejected cleanly rather than wrapping to a tiny node count.
+        const MAX_MOMENT_NODES: usize = 100_000;
+        let m_required = n as f64 + theta.abs().ceil() + 32.0;
+        if m_required > MAX_MOMENT_NODES as f64 {
+            return Err(QuadratureError::InvalidInput(
+                "omega too large for Filon-Clenshaw-Curtis moments",
+            ));
+        }
 
         // Step 1: Evaluate f at Clenshaw-Curtis nodes on [-1, 1]
         let f_vals: Vec<f64> = (0..=n)
@@ -336,7 +362,9 @@ fn modified_chebyshev_moments(theta: f64, n: usize) -> (Vec<f64>, Vec<f64>) {
 /// # Errors
 ///
 /// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
-/// is non-finite.
+/// is non-finite, or [`QuadratureError::InvalidInput`] if `omega` is too large
+/// for the Filon-Clenshaw-Curtis moment quadrature (see
+/// [`OscillatoryIntegrator::integrate`]).
 pub fn integrate_oscillatory_sin<G>(
     f: G,
     a: f64,
@@ -368,7 +396,9 @@ where
 /// # Errors
 ///
 /// Returns [`QuadratureError::DegenerateInterval`] if `a`, `b`, or `omega`
-/// is non-finite.
+/// is non-finite, or [`QuadratureError::InvalidInput`] if `omega` is too large
+/// for the Filon-Clenshaw-Curtis moment quadrature (see
+/// [`OscillatoryIntegrator::integrate`]).
 pub fn integrate_oscillatory_cos<G>(
     f: G,
     a: f64,
@@ -494,6 +524,19 @@ mod tests {
             (result.value - exact).abs() < 1e-6,
             "value={}, exact={exact}",
             result.value
+        );
+    }
+
+    #[test]
+    fn extreme_omega_errors_cleanly() {
+        // A frequency far beyond the Filon moment-node budget must return
+        // InvalidInput rather than attempting a multi-gigabyte allocation or
+        // overflowing the f64→usize node-count cast (which previously wrapped
+        // to a tiny node count and returned a silently-wrong result).
+        let r = integrate_oscillatory_sin(|_| 1.0, 0.0, 1.0, 1e9, 1e-8);
+        assert!(
+            matches!(r, Err(QuadratureError::InvalidInput(_))),
+            "expected InvalidInput, got {r:?}"
         );
     }
 }

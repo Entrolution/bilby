@@ -107,6 +107,10 @@ impl TanhSinh {
 
         let mid = 0.5 * (a + b);
         let half = 0.5 * (b - a);
+        // Open-interval bounds for the singular-endpoint guard. Ordered so the
+        // membership test holds for reversed limits (a > b); the sign of the
+        // integral is carried by `half`, which is negative when a > b.
+        let (lo, hi) = (a.min(b), a.max(b));
         let pi_2 = core::f64::consts::FRAC_PI_2;
 
         let mut total_evals = 0usize;
@@ -179,7 +183,7 @@ impl TanhSinh {
                 // Positive t: x = mid + half * tanh(u)
                 let mut local_contrib = 0.0_f64;
                 let x_pos = mid + half * tanh_u;
-                if x_pos > a && x_pos < b {
+                if x_pos > lo && x_pos < hi {
                     let fval = f(x_pos);
                     if fval.is_finite() {
                         new_sum += weight * fval;
@@ -190,7 +194,7 @@ impl TanhSinh {
 
                 // Negative t: x = mid - half * tanh(u)
                 let x_neg = mid - half * tanh_u;
-                if x_neg > a && x_neg < b {
+                if x_neg > lo && x_neg < hi {
                     let fval = f(x_neg);
                     if fval.is_finite() {
                         new_sum += weight * fval;
@@ -201,7 +205,7 @@ impl TanhSinh {
 
                 // Check if actual contributions (including f(x)) are negligible
                 let threshold = f64::EPSILON * prev_estimate.abs().max(1e-300);
-                if local_contrib * half < threshold {
+                if local_contrib * half.abs() < threshold {
                     consecutive_tiny += 1;
                     if consecutive_tiny >= 3 {
                         break;
@@ -306,6 +310,30 @@ mod tests {
         // f64 limits: tanh saturates near ±1, losing ~1.5e-8 of the integral
         let result = tanh_sinh_integrate(|x| 1.0 / x.sqrt(), 0.0, 1.0, 1e-10).unwrap();
         assert!((result.value - 2.0).abs() < 1e-7, "value={}", result.value);
+    }
+
+    #[test]
+    fn reversed_bounds_negate() {
+        // tanh-sinh must honour reversed limits like the rest of the library:
+        // ∫_b^a f = -∫_a^b f. Here the endpoint singularity at 0 becomes the
+        // upper bound. Before the fix, the membership test dropped every
+        // interior sample for a > b and returned a meaningless near-zero value.
+        let rev = tanh_sinh_integrate(|x| 1.0 / x.sqrt(), 1.0, 0.0, 1e-10).unwrap();
+        assert!(
+            rev.converged,
+            "did not converge: err={}",
+            rev.error_estimate
+        );
+        assert!((rev.value - (-2.0)).abs() < 1e-7, "value={}", rev.value);
+
+        // Equals the negation of the forward integral.
+        let fwd = tanh_sinh_integrate(|x| 1.0 / x.sqrt(), 0.0, 1.0, 1e-10).unwrap();
+        assert!(
+            (rev.value + fwd.value).abs() < 1e-9,
+            "fwd={}, rev={}",
+            fwd.value,
+            rev.value
+        );
     }
 
     #[test]
