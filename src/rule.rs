@@ -67,6 +67,9 @@ impl<F: Float> QuadratureRule<F> {
     where
         G: Fn(F) -> F,
     {
+        if n_panels == 0 {
+            return F::zero();
+        }
         let n = F::from(n_panels).unwrap();
         let panel_width = (b - a) / n;
         let mut total = F::zero();
@@ -97,6 +100,9 @@ impl<F: Float> QuadratureRule<F> {
     {
         use rayon::prelude::*;
 
+        if n_panels == 0 {
+            return F::zero();
+        }
         let n = F::from(n_panels).unwrap();
         let panel_width = (b - a) / n;
 
@@ -108,5 +114,18 @@ impl<F: Float> QuadratureRule<F> {
                 self.integrate(panel_a, panel_b, &f)
             })
             .reduce(F::zero, |a, b| a + b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::GaussLegendre;
+
+    #[test]
+    fn zero_panels_returns_zero() {
+        // n_panels == 0 must short-circuit instead of computing (b - a) / 0.
+        let gl = GaussLegendre::new(5).unwrap();
+        let r = gl.rule().integrate_composite(0.0, 1.0, 0, |x: f64| x);
+        assert_eq!(r, 0.0);
     }
 }

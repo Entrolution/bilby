@@ -78,8 +78,8 @@ impl AdaptiveCubature {
     /// # Errors
     ///
     /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
-    /// different lengths or are empty. Returns [`QuadratureError::DegenerateInterval`]
-    /// if any bound is non-finite.
+    /// different lengths, are empty, or if `lower[i] > upper[i]` on any axis.
+    /// Returns [`QuadratureError::DegenerateInterval`] if any bound is non-finite.
     pub fn integrate<G>(
         &self,
         lower: &[f64],
@@ -103,6 +103,13 @@ impl AdaptiveCubature {
         for i in 0..d {
             if !lower[i].is_finite() || !upper[i].is_finite() {
                 return Err(QuadratureError::DegenerateInterval);
+            }
+            // An inverted axis would give a negative half-width and a silently
+            // sign-flipped / garbage result; reject rather than guess intent.
+            if lower[i] > upper[i] {
+                return Err(QuadratureError::InvalidInput(
+                    "cubature requires lower[i] <= upper[i] on every axis",
+                ));
             }
         }
 
@@ -429,6 +436,12 @@ mod tests {
         assert!(adaptive_cubature(|_| 1.0, &[f64::INFINITY], &[1.0], 1e-8).is_err());
         assert!(adaptive_cubature(|_| 1.0, &[0.0], &[f64::NEG_INFINITY], 1e-8).is_err());
         assert!(adaptive_cubature(|_| 1.0, &[0.0, f64::INFINITY], &[1.0, 1.0], 1e-8).is_err());
+    }
+
+    #[test]
+    fn inverted_box_rejected() {
+        // An axis with lower > upper would give a silently sign-flipped result.
+        assert!(adaptive_cubature(|_| 1.0, &[0.0, 1.0], &[1.0, 0.0], 1e-8).is_err());
     }
 
     #[test]

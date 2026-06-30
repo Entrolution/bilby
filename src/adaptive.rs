@@ -187,7 +187,12 @@ impl AdaptiveIntegrator {
             }
         }
 
-        // Validate tolerances
+        // Validate tolerances. A NaN tolerance would pass the `<= 0.0` check
+        // (NaN compares false) and then make every `error <= tol` test false,
+        // spinning to max_evals instead of erroring.
+        if self.abs_tol.is_nan() || self.rel_tol.is_nan() {
+            return Err(QuadratureError::InvalidInput("tolerances must not be NaN"));
+        }
         if self.abs_tol <= 0.0 && self.rel_tol <= 0.0 {
             return Err(QuadratureError::InvalidInput(
                 "at least one tolerance must be positive",
@@ -575,6 +580,15 @@ mod tests {
             .unwrap();
         assert!(r.converged, "err={}", r.error_estimate);
         assert!((r.value - 2.0).abs() < 1e-14, "value={}", r.value);
+    }
+
+    #[test]
+    fn nan_tolerance_rejected() {
+        // A NaN tolerance must error, not slip past the `<= 0.0` check and spin.
+        let r = AdaptiveIntegrator::default()
+            .with_abs_tol(f64::NAN)
+            .integrate(0.0, 1.0, |x: f64| x);
+        assert!(r.is_err());
     }
 
     /// Non-convergence within tight budget is signalled via converged flag.
