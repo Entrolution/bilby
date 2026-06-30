@@ -55,13 +55,29 @@ impl SparseGrid {
     ///
     /// # Errors
     ///
-    /// Returns [`QuadratureError::InvalidInput`] if `dim` is zero.
+    /// Returns [`QuadratureError::InvalidInput`] if `dim` is zero, if `dim` or
+    /// `level` exceeds the supported maximum (32 and 12 respectively), or if the
+    /// resulting grid would exceed roughly one million points.
     pub fn new(dim: usize, level: usize, _basis: SparseGridBasis) -> Result<Self, QuadratureError> {
         if dim == 0 {
             return Err(QuadratureError::InvalidInput("dimension must be >= 1"));
         }
+        // Bound the inputs so the integer arithmetic stays safe (the `1 << level`
+        // in cc_order and the binomial coefficients cannot overflow) and a single
+        // 1-D Clenshaw-Curtis rule stays small. The combined point count is
+        // bounded separately inside build_smolyak.
+        if dim > MAX_DIM {
+            return Err(QuadratureError::InvalidInput(
+                "sparse grid dimension exceeds the supported maximum (32)",
+            ));
+        }
+        if level > MAX_LEVEL {
+            return Err(QuadratureError::InvalidInput(
+                "sparse grid level exceeds the supported maximum (12)",
+            ));
+        }
 
-        let rule = build_smolyak(dim, level);
+        let rule = build_smolyak(dim, level)?;
         Ok(Self { rule, level })
     }
 
@@ -139,7 +155,28 @@ fn quantise(x: f64) -> i64 {
 ///   `Q_{q,d}` = Σ_{max(q-d+1,0) ≤ |l|-d ≤ q-d} (-1)^{q-|l|+d} C(d-1, q-|l|+d) · (`Q_{l_1}` ⊗ ... ⊗ `Q_{l_d}`)
 ///
 /// Using 0-indexed levels where `l_j` ≥ 0.
-fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
+/// Maximum sparse-grid dimension (keeps the binomial coefficients within usize).
+const MAX_DIM: usize = 32;
+/// Maximum sparse-grid level. The finest 1-D Clenshaw-Curtis rule has
+/// `2^level + 1` points and is built in O(n²), so this also bounds the
+/// precompute cost (`cc_order(12) = 4097`).
+const MAX_LEVEL: usize = 12;
+/// Maximum cumulative sparse-grid tensor-point count before construction is
+/// rejected. Bounds the total inner-loop work, the outer multi-index
+/// enumeration (each contributes >= 1), and the memory.
+const MAX_SPARSE_POINTS: usize = 1_000_000;
+
+fn build_smolyak(dim: usize, level: usize) -> Result<CubatureRule, QuadratureError> {
+    // Reject up front if the number of Smolyak multi-indices, C(level+dim, dim),
+    // already exceeds the budget: each contributes at least one point, so the
+    // grid is infeasible, and this avoids the expensive enumeration entirely.
+    // The level/dim caps keep this binomial within usize.
+    if binomial(level + dim, dim) > MAX_SPARSE_POINTS {
+        return Err(QuadratureError::InvalidInput(
+            "sparse grid point count exceeds the supported maximum (1e6)",
+        ));
+    }
+
     // Precompute CC rules for each level we'll need
     let max_level = level;
     let cc_rules: Vec<(Vec<f64>, Vec<f64>)> =
@@ -167,6 +204,11 @@ fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
     let sum_min = (q + 1).saturating_sub(dim);
     let sum_max = q;
 
+    // Running count of tensor-point insertions across all multi-indices. Bailing
+    // when it exceeds the budget bounds the inner-loop work, the number of
+    // multi-indices enumerated (each adds >= 1), and the memory in one check.
+    let mut cumulative = 0usize;
+
     for s in sum_min..=sum_max {
         let diff = q - s;
         // Binomial coefficients for sparse grid levels are small enough to fit in f64.
@@ -186,6 +228,17 @@ fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
             // Process this multi-index
             let orders: Vec<usize> = multi_idx.iter().map(|&l| cc_order(l)).collect();
             let total: usize = orders.iter().product();
+
+            // Reject infeasibly large grids (the curse of dimensionality) rather
+            // than hanging in the inner loop or exhausting memory. With level <=
+            // MAX_LEVEL each factor is small enough that `total` (and the running
+            // sum, which bails at <= 2*MAX_SPARSE_POINTS) cannot overflow.
+            cumulative += total;
+            if cumulative > MAX_SPARSE_POINTS {
+                return Err(QuadratureError::InvalidInput(
+                    "sparse grid point count exceeds the supported maximum (1e6)",
+                ));
+            }
 
             let mut indices = vec![0usize; dim];
             for _ in 0..total {
@@ -248,7 +301,7 @@ fn build_smolyak(dim: usize, level: usize) -> CubatureRule {
         weights.push(w);
     }
 
-    CubatureRule::new(nodes_flat, weights, dim)
+    Ok(CubatureRule::new(nodes_flat, weights, dim))
 }
 
 /// Generate the next weak composition of `s` into `d` non-negative parts.
@@ -303,6 +356,22 @@ fn binomial(n: usize, k: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extreme_level_and_dim_rejected() {
+        // Beyond the supported caps, construction must error rather than
+        // overflow `1 << level` or build a gigantic single 1-D rule.
+        assert!(SparseGrid::clenshaw_curtis(3, 64).is_err());
+        assert!(SparseGrid::clenshaw_curtis(100, 3).is_err());
+    }
+
+    #[test]
+    fn infeasible_point_count_rejected() {
+        // Within the level/dim caps, but the combined point count is far too
+        // large (curse of dimensionality). Must reject (quickly) rather than
+        // exhausting memory or hanging in the multi-index enumeration.
+        assert!(SparseGrid::clenshaw_curtis(32, 6).is_err());
+    }
 
     #[test]
     fn level_0_single_point() {

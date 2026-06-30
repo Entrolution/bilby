@@ -45,8 +45,8 @@ impl GaussLaguerre {
     /// # Errors
     ///
     /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
-    /// Returns [`QuadratureError::InvalidInput`] if `alpha <= -1` or `alpha`
-    /// is non-finite.
+    /// Returns [`QuadratureError::InvalidInput`] if `alpha <= -1`, `alpha` is
+    /// non-finite, or `μ₀ = Γ(alpha+1)` overflows `f64` (`alpha` ≳ 170).
     pub fn new(n: usize, alpha: f64) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -89,7 +89,15 @@ fn compute_laguerre(n: usize, alpha: f64) -> Result<(Vec<f64>, Vec<f64>), Quadra
             k * (k + alpha)
         })
         .collect();
-    let mu0 = ln_gamma(alpha + 1.0).exp();
+    // μ₀ = Γ(α+1), formed in log-space. For α ≳ 170 this overflows f64; reject
+    // it rather than returning all-infinite weights with no diagnostic.
+    let ln_mu0 = ln_gamma(alpha + 1.0);
+    if !ln_mu0.is_finite() || ln_mu0 > f64::MAX.ln() {
+        return Err(QuadratureError::InvalidInput(
+            "Laguerre weight integral mu0 = Gamma(alpha+1) overflows f64 (alpha too large)",
+        ));
+    }
+    let mu0 = ln_mu0.exp();
 
     golub_welsch(&diag, &off_diag_sq, mu0)
 }
@@ -148,6 +156,15 @@ mod tests {
     fn infinite_alpha_rejected() {
         assert!(GaussLaguerre::new(5, f64::INFINITY).is_err());
         assert!(GaussLaguerre::new(5, f64::NAN).is_err());
+    }
+
+    #[test]
+    fn large_alpha_overflow_rejected() {
+        // μ₀ = Γ(alpha+1) overflows f64 for alpha ≳ 170; reject rather than
+        // returning all-infinite weights with no diagnostic.
+        assert!(GaussLaguerre::new(5, 200.0).is_err());
+        // A value comfortably under the overflow threshold still works.
+        assert!(GaussLaguerre::new(5, 150.0).is_ok());
     }
 
     /// Polynomial exactness: integral of x^k e^(-x) over [0,inf) = k! = Gamma(k+1).

@@ -208,6 +208,18 @@ impl AdaptiveIntegrator {
         let mut total_error = 0.0;
         let mut num_evals = 0;
 
+        // Seeding every (non-degenerate) break-point subinterval must fit within
+        // the eval budget; otherwise the documented max_evals contract would be
+        // silently overrun on the integrate_with_breaks path. Compared via
+        // division to avoid overflow in n_seed * evals_per_call.
+        #[allow(clippy::float_cmp)]
+        let n_seed = intervals.iter().filter(|(ia, ib)| ia != ib).count();
+        if n_seed > self.max_evals / evals_per_call {
+            return Err(QuadratureError::InvalidInput(
+                "max_evals is too small to seed all break-point subintervals",
+            ));
+        }
+
         // Seed the priority queue with initial intervals
         for &(ia, ib) in intervals {
             // Exact comparison is intentional: degenerate zero-width
@@ -238,6 +250,18 @@ impl AdaptiveIntegrator {
 
             // Bisect the worst interval
             let mid = 0.5 * (worst.a + worst.b);
+
+            // If the midpoint rounds to an endpoint the interval has shrunk to
+            // the floating-point resolution limit (typically at an integrable
+            // singularity); bisecting it cannot reduce the error. Drop it and
+            // refine the next-worst interval rather than spinning to max_evals
+            // re-evaluating the same panel. Exact equality is orientation-
+            // independent, so this also holds for reversed bounds (a > b). Its
+            // error stays in total_error, so convergence is not falsely declared.
+            #[allow(clippy::float_cmp)]
+            if mid == worst.a || mid == worst.b {
+                continue;
+            }
 
             let left = gk.integrate_detail(worst.a, mid, f);
             let right = gk.integrate_detail(mid, worst.b, f);
@@ -477,6 +501,66 @@ mod tests {
     fn break_outside_interval() {
         let r = adaptive_integrate_with_breaks(f64::sin, 0.0, 1.0, &[2.0], 1e-12);
         assert!(r.is_err());
+    }
+
+    /// Too many break-point subintervals for the eval budget is rejected,
+    /// rather than silently overrunning max_evals during seeding.
+    #[test]
+    fn seed_budget_rejected_when_too_many_breaks() {
+        let breaks: Vec<f64> = (1..200).map(|i| f64::from(i) / 200.0).collect();
+        let r = AdaptiveIntegrator::default()
+            .with_max_evals(100)
+            .integrate_with_breaks(0.0, 1.0, &breaks, |x| x);
+        assert!(r.is_err());
+    }
+
+    /// An integrable endpoint singularity forces refinement toward the limit of
+    /// float resolution. The min-width guard drops unrefineable panels instead
+    /// of spinning to max_evals, so the call terminates with a finite value.
+    #[test]
+    fn singular_integrand_terminates() {
+        let r = AdaptiveIntegrator::default()
+            .with_abs_tol(1e-13)
+            .with_rel_tol(1e-13)
+            .integrate(
+                0.0,
+                1.0,
+                |x: f64| if x > 0.0 { 1.0 / x.sqrt() } else { 0.0 },
+            )
+            .unwrap();
+        assert!(r.value.is_finite());
+        assert!((r.value - 2.0).abs() < 0.05, "value={}", r.value);
+    }
+
+    /// Reversed bounds that require subdivision must still negate the forward
+    /// result. A peaked integrand forces the refinement loop (and the min-width
+    /// guard) to run, where an orientation-dependent guard would wrongly drop
+    /// every reversed (a > b) interval.
+    #[test]
+    fn reversed_bounds_needing_refinement_negate() {
+        let f = |x: f64| 1.0 / (1.0 + (x - 0.3).powi(2) * 1.0e4);
+        let fwd = AdaptiveIntegrator::default()
+            .with_abs_tol(1e-10)
+            .with_rel_tol(1e-10)
+            .integrate(0.0, 1.0, f)
+            .unwrap();
+        let rev = AdaptiveIntegrator::default()
+            .with_abs_tol(1e-10)
+            .with_rel_tol(1e-10)
+            .integrate(1.0, 0.0, f)
+            .unwrap();
+        assert!(
+            fwd.converged && rev.converged,
+            "fwd.conv={}, rev.conv={}",
+            fwd.converged,
+            rev.converged
+        );
+        assert!(
+            (fwd.value + rev.value).abs() < 1e-9,
+            "fwd={}, rev={}",
+            fwd.value,
+            rev.value
+        );
     }
 
     /// Builder with higher-order pair achieves tight tolerance.
