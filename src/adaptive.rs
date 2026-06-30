@@ -53,10 +53,10 @@ impl PartialOrd for Subinterval {
 
 impl Ord for Subinterval {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Max-heap by error. NaN sorts low.
-        self.error
-            .partial_cmp(&other.error)
-            .unwrap_or(Ordering::Equal)
+        // Max-heap by error, as a total order including NaN. The previous
+        // `partial_cmp(...).unwrap_or(Equal)` made a NaN error compare equal to
+        // every value, which is non-transitive; total_cmp is a proper total order.
+        self.error.total_cmp(&other.error)
     }
 }
 
@@ -580,6 +580,14 @@ mod tests {
             .unwrap();
         assert!(r.converged, "err={}", r.error_estimate);
         assert!((r.value - 2.0).abs() < 1e-14, "value={}", r.value);
+    }
+
+    #[test]
+    fn nan_integrand_terminates_without_panic() {
+        // A NaN-producing integrand makes some panel errors NaN; the heap must
+        // stay well-ordered (total_cmp) and the call must return, not panic.
+        let r = AdaptiveIntegrator::default().integrate(0.0, 1.0, |_x: f64| f64::NAN);
+        assert!(r.is_ok());
     }
 
     #[test]

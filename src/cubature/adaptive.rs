@@ -262,9 +262,10 @@ impl PartialOrd for SubRegion {
 
 impl Ord for SubRegion {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.error
-            .partial_cmp(&other.error)
-            .unwrap_or(Ordering::Equal)
+        // Total order including NaN. `partial_cmp(...).unwrap_or(Equal)` made a
+        // NaN region error compare equal to every value, breaking transitivity;
+        // total_cmp sorts a NaN error consistently to an extreme.
+        self.error.total_cmp(&other.error)
     }
 }
 

@@ -135,7 +135,9 @@ fn compute_newton(n: usize, m: usize, nodes: &mut [f64], weights: &mut [f64]) {
         }
 
         let (_, p_n_deriv) = legendre_eval(n, x);
-        let w = 2.0 / ((1.0 - x * x) * p_n_deriv * p_n_deriv);
+        // (1-x)(1+x) instead of 1-x*x: for x near ±1 the latter cancels (both
+        // terms ~1), while (1-x) is exact there by Sterbenz's lemma.
+        let w = 2.0 / ((1.0 - x) * (1.0 + x) * p_n_deriv * p_n_deriv);
 
         // Store: nodes are in increasing order (-1 to 1).
         // i=0 is the most negative node.
@@ -168,7 +170,8 @@ pub(crate) fn legendre_eval(n: usize, x: f64) -> (f64, f64) {
 
     // P_n'(x) = n * (x * P_n(x) - P_{n-1}(x)) / (x^2 - 1)
     let nf = n as f64;
-    let deriv = nf * (x * p_curr - p_prev) / (x * x - 1.0);
+    // -(1-x)(1+x) instead of x*x-1: avoids cancellation for x near ±1.
+    let deriv = nf * (x * p_curr - p_prev) / -((1.0 - x) * (1.0 + x));
 
     (p_curr, deriv)
 }
@@ -402,7 +405,9 @@ fn compute_gl_pair_par(n: usize) -> (Vec<f64>, Vec<f64>) {
                 }
 
                 let (_, p_n_deriv) = legendre_eval(n, x);
-                let w = 2.0 / ((1.0 - x * x) * p_n_deriv * p_n_deriv);
+                // (1-x)(1+x) instead of 1-x*x: for x near ±1 the latter cancels (both
+                // terms ~1), while (1-x) is exact there by Sterbenz's lemma.
+                let w = 2.0 / ((1.0 - x) * (1.0 + x) * p_n_deriv * p_n_deriv);
                 (i, x, w)
             })
             .collect();
