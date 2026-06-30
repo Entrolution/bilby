@@ -1,6 +1,6 @@
 //! Sobol low-discrepancy sequence.
 //!
-//! Quasi-random sequence using direction numbers from Joe & Kuo (2010).
+//! Quasi-random sequence using direction numbers from Joe & Kuo (2008).
 //! Better uniformity than Halton sequences, especially in high dimensions.
 //!
 //! Uses gray-code enumeration for O(1) per-point generation.
@@ -16,7 +16,7 @@ const BITS: u32 = 32;
 /// Sobol sequence generator.
 ///
 /// Generates quasi-random points in \[0, 1)^d using direction numbers
-/// from Joe & Kuo (2010). The first dimension uses the Van der Corput
+/// from Joe & Kuo (2008). The first dimension uses the Van der Corput
 /// sequence (base 2), higher dimensions use primitive polynomials.
 ///
 /// # Example
@@ -174,206 +174,216 @@ struct SobolEntry {
     m: [u32; 8],
 }
 
-/// Direction numbers from Joe & Kuo (2010) for dimensions 2..40.
-/// Each entry: (degree s, polynomial coefficients a, initial m-values).
+/// Direction numbers from Joe & Kuo (2008) for dimensions 2..=40.
 ///
-/// Source: <https://web.maths.unsw.edu.au/~fkuo/sobol/joe-kuo-old.1111>
+/// `SOBOL_TABLE[k]` holds the parameters for spatial dimension `k + 2` (the
+/// first dimension is the parameter-free Van der Corput sequence). Each entry
+/// is `(degree s, polynomial coefficient encoding a, initial m-values m_1..m_s)`
+/// for a distinct primitive polynomial over GF(2), ordered by increasing degree;
+/// every `m_i` is odd with `m_i < 2^i`. There is exactly one primitive polynomial
+/// of degree 1, so the degree-1 block has a single entry — two degree-1 rows would
+/// produce identical direction numbers and collapse two coordinates onto each other.
+///
+/// Source: `new-joe-kuo-6.21201` from the authors' repository
+/// <https://github.com/joe-kuo/sobol_data> (Joe & Kuo, "Constructing Sobol
+/// sequences with better two-dimensional projections", SIAM J. Sci. Comput.
+/// 30 (2008) 2635-2654).
 static SOBOL_TABLE: [SobolEntry; 39] = [
     SobolEntry {
         degree: 1,
         coeffs: 0,
         m: [1, 0, 0, 0, 0, 0, 0, 0],
-    },
-    SobolEntry {
-        degree: 1,
-        coeffs: 1,
-        m: [1, 0, 0, 0, 0, 0, 0, 0],
-    },
+    }, // d=2
     SobolEntry {
         degree: 2,
         coeffs: 1,
-        m: [1, 1, 0, 0, 0, 0, 0, 0],
-    },
+        m: [1, 3, 0, 0, 0, 0, 0, 0],
+    }, // d=3
     SobolEntry {
         degree: 3,
         coeffs: 1,
         m: [1, 3, 1, 0, 0, 0, 0, 0],
-    },
+    }, // d=4
     SobolEntry {
         degree: 3,
         coeffs: 2,
         m: [1, 1, 1, 0, 0, 0, 0, 0],
-    },
+    }, // d=5
     SobolEntry {
         degree: 4,
         coeffs: 1,
         m: [1, 1, 3, 3, 0, 0, 0, 0],
-    },
+    }, // d=6
     SobolEntry {
         degree: 4,
         coeffs: 4,
         m: [1, 3, 5, 13, 0, 0, 0, 0],
-    },
+    }, // d=7
     SobolEntry {
         degree: 5,
         coeffs: 2,
         m: [1, 1, 5, 5, 17, 0, 0, 0],
-    },
+    }, // d=8
     SobolEntry {
         degree: 5,
         coeffs: 4,
         m: [1, 1, 5, 5, 5, 0, 0, 0],
-    },
+    }, // d=9
     SobolEntry {
         degree: 5,
         coeffs: 7,
         m: [1, 1, 7, 11, 19, 0, 0, 0],
-    },
+    }, // d=10
     SobolEntry {
         degree: 5,
         coeffs: 11,
         m: [1, 1, 5, 1, 1, 0, 0, 0],
-    },
+    }, // d=11
     SobolEntry {
         degree: 5,
         coeffs: 13,
         m: [1, 1, 1, 3, 11, 0, 0, 0],
-    },
+    }, // d=12
     SobolEntry {
         degree: 5,
         coeffs: 14,
         m: [1, 3, 5, 5, 31, 0, 0, 0],
-    },
+    }, // d=13
     SobolEntry {
         degree: 6,
         coeffs: 1,
         m: [1, 3, 3, 9, 7, 49, 0, 0],
-    },
+    }, // d=14
     SobolEntry {
         degree: 6,
         coeffs: 13,
         m: [1, 1, 1, 15, 21, 21, 0, 0],
-    },
+    }, // d=15
     SobolEntry {
         degree: 6,
         coeffs: 16,
         m: [1, 3, 1, 13, 27, 49, 0, 0],
-    },
+    }, // d=16
+    SobolEntry {
+        degree: 6,
+        coeffs: 19,
+        m: [1, 1, 1, 15, 7, 5, 0, 0],
+    }, // d=17
+    SobolEntry {
+        degree: 6,
+        coeffs: 22,
+        m: [1, 3, 1, 15, 13, 25, 0, 0],
+    }, // d=18
+    SobolEntry {
+        degree: 6,
+        coeffs: 25,
+        m: [1, 1, 5, 5, 19, 61, 0, 0],
+    }, // d=19
+    SobolEntry {
+        degree: 7,
+        coeffs: 1,
+        m: [1, 3, 7, 11, 23, 15, 103, 0],
+    }, // d=20
+    SobolEntry {
+        degree: 7,
+        coeffs: 4,
+        m: [1, 3, 7, 13, 13, 15, 69, 0],
+    }, // d=21
+    SobolEntry {
+        degree: 7,
+        coeffs: 7,
+        m: [1, 1, 3, 13, 7, 35, 63, 0],
+    }, // d=22
+    SobolEntry {
+        degree: 7,
+        coeffs: 8,
+        m: [1, 3, 5, 9, 1, 25, 53, 0],
+    }, // d=23
+    SobolEntry {
+        degree: 7,
+        coeffs: 14,
+        m: [1, 3, 1, 13, 9, 35, 107, 0],
+    }, // d=24
     SobolEntry {
         degree: 7,
         coeffs: 19,
-        m: [1, 1, 1, 15, 7, 5, 127, 0],
-    },
+        m: [1, 3, 1, 5, 27, 61, 31, 0],
+    }, // d=25
     SobolEntry {
         degree: 7,
-        coeffs: 22,
-        m: [1, 3, 3, 5, 19, 33, 65, 0],
-    },
+        coeffs: 21,
+        m: [1, 1, 5, 11, 19, 41, 61, 0],
+    }, // d=26
     SobolEntry {
         degree: 7,
-        coeffs: 25,
-        m: [1, 3, 7, 11, 29, 17, 85, 0],
-    },
+        coeffs: 28,
+        m: [1, 3, 5, 3, 3, 13, 69, 0],
+    }, // d=27
+    SobolEntry {
+        degree: 7,
+        coeffs: 31,
+        m: [1, 1, 7, 13, 1, 19, 1, 0],
+    }, // d=28
+    SobolEntry {
+        degree: 7,
+        coeffs: 32,
+        m: [1, 3, 7, 5, 13, 19, 59, 0],
+    }, // d=29
     SobolEntry {
         degree: 7,
         coeffs: 37,
-        m: [1, 1, 3, 7, 23, 55, 41, 0],
-    },
+        m: [1, 1, 3, 9, 25, 29, 41, 0],
+    }, // d=30
     SobolEntry {
         degree: 7,
         coeffs: 41,
-        m: [1, 3, 5, 1, 15, 17, 63, 0],
-    },
+        m: [1, 3, 5, 13, 23, 1, 55, 0],
+    }, // d=31
+    SobolEntry {
+        degree: 7,
+        coeffs: 42,
+        m: [1, 3, 7, 3, 13, 59, 17, 0],
+    }, // d=32
     SobolEntry {
         degree: 7,
         coeffs: 50,
-        m: [1, 1, 7, 9, 31, 29, 17, 0],
-    },
+        m: [1, 3, 1, 3, 5, 53, 69, 0],
+    }, // d=33
     SobolEntry {
         degree: 7,
         coeffs: 55,
-        m: [1, 3, 7, 7, 21, 61, 119, 0],
-    },
+        m: [1, 1, 5, 5, 23, 33, 13, 0],
+    }, // d=34
+    SobolEntry {
+        degree: 7,
+        coeffs: 56,
+        m: [1, 1, 7, 7, 1, 61, 123, 0],
+    }, // d=35
     SobolEntry {
         degree: 7,
         coeffs: 59,
-        m: [1, 1, 5, 3, 5, 49, 89, 0],
-    },
+        m: [1, 1, 7, 9, 13, 61, 49, 0],
+    }, // d=36
     SobolEntry {
         degree: 7,
         coeffs: 62,
-        m: [1, 3, 1, 1, 11, 3, 117, 0],
-    },
+        m: [1, 3, 3, 5, 3, 55, 33, 0],
+    }, // d=37
     SobolEntry {
         degree: 8,
         coeffs: 14,
-        m: [1, 3, 3, 3, 15, 17, 17, 193],
-    },
+        m: [1, 3, 1, 15, 31, 13, 49, 245],
+    }, // d=38
     SobolEntry {
         degree: 8,
-        coeffs: 52,
-        m: [1, 1, 3, 7, 31, 29, 67, 45],
-    },
+        coeffs: 21,
+        m: [1, 3, 5, 15, 31, 59, 63, 97],
+    }, // d=39
     SobolEntry {
         degree: 8,
-        coeffs: 56,
-        m: [1, 3, 1, 7, 23, 59, 55, 165],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 67,
-        m: [1, 3, 5, 9, 21, 37, 7, 51],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 69,
-        m: [1, 1, 7, 5, 17, 13, 81, 251],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 70,
-        m: [1, 1, 3, 15, 29, 47, 49, 143],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 79,
-        m: [1, 3, 7, 3, 21, 39, 29, 45],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 81,
-        m: [1, 1, 5, 7, 29, 7, 37, 67],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 84,
-        m: [1, 1, 5, 5, 11, 57, 97, 175],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 87,
-        m: [1, 3, 3, 13, 29, 25, 29, 15],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 90,
-        m: [1, 1, 7, 7, 31, 37, 105, 189],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 97,
-        m: [1, 3, 5, 3, 25, 37, 5, 187],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 103,
-        m: [1, 3, 1, 7, 21, 43, 81, 37],
-    },
-    SobolEntry {
-        degree: 8,
-        coeffs: 115,
-        m: [1, 1, 3, 5, 1, 45, 47, 77],
-    },
+        coeffs: 22,
+        m: [1, 3, 1, 11, 11, 11, 77, 249],
+    }, // d=40
 ];
 
 #[cfg(test)]
@@ -463,23 +473,126 @@ mod tests {
         }
     }
 
+    /// The first emitted points must match the unscrambled Joe-Kuo sequence
+    /// (`new-joe-kuo-6.21201`). bilby advances `index` before emitting, so it
+    /// drops the index-0 zero point: emitted point `n` equals the reference
+    /// sequence's index-`n` point. Reference oracle: SciPy `stats.qmc.Sobol`
+    /// with `scramble=false`, which uses the same 6.21201 direction numbers.
+    ///
+    /// This anchors the dimension-2 direction numbers to an external oracle; it
+    /// does NOT guard against the coordinate-collapse regression (which lived in
+    /// a later table entry) — that is covered by `all_dimensions_pairwise_distinct`
+    /// and `direction_table_structurally_valid`.
     #[test]
-    fn high_dim_constant_integral() {
-        // Quasi-Monte Carlo estimate of ∫_{[0,1]^d} 1 dx = 1
-        // Using Sobol with N points, the average of f=1 should be 1.
-        let dim = 20;
-        let n = 1024;
+    fn dim2_matches_reference_sequence() {
+        let expected = [
+            [0.5, 0.5],
+            [0.75, 0.25],
+            [0.25, 0.75],
+            [0.375, 0.375],
+            [0.875, 0.875],
+        ];
+        let mut sob = SobolSequence::new(2).unwrap();
+        let mut pt = [0.0; 2];
+        for (n, exp) in expected.iter().enumerate() {
+            sob.next_point(&mut pt);
+            for j in 0..2 {
+                assert!(
+                    (pt[j] - exp[j]).abs() < 1e-12,
+                    "point {}, dim {j}: {} vs {}",
+                    n + 1,
+                    pt[j],
+                    exp[j]
+                );
+            }
+        }
+    }
+
+    /// No two coordinates may follow the same sequence. Identical direction
+    /// numbers for two dimensions collapse their joint projection onto the
+    /// diagonal and silently bias any integrand that couples them.
+    #[test]
+    fn all_dimensions_pairwise_distinct() {
+        let dim = MAX_DIM;
+        let n = 256;
+        let mut sob = SobolSequence::new(dim).unwrap();
+        let mut cols: Vec<Vec<f64>> = (0..dim).map(|_| Vec::with_capacity(n)).collect();
+        let mut pt = vec![0.0; dim];
+        for _ in 0..n {
+            sob.next_point(&mut pt);
+            for (j, &x) in pt.iter().enumerate() {
+                cols[j].push(x);
+            }
+        }
+        for a in 0..dim {
+            for b in (a + 1)..dim {
+                assert!(cols[a] != cols[b], "dimensions {a} and {b} are identical");
+            }
+        }
+    }
+
+    /// The table must encode a valid set of distinct primitive polynomials over
+    /// GF(2): degrees non-decreasing, the per-degree counts matching the number
+    /// of primitive polynomials of each degree (1,1,2,2,6,6,18 for degrees 1-7,
+    /// plus the first 3 of the 16 degree-8 polynomials for dims 38-40), distinct
+    /// (degree, coeffs) pairs, and every initial direction number `m_i` odd with
+    /// `m_i < 2^i`. A duplicate or out-of-range entry silently collapses or
+    /// degrades the sequence.
+    #[test]
+    fn direction_table_structurally_valid() {
+        let mut counts = [0usize; 9]; // indexed by degree 1..=8
+        let mut prev_degree = 0u32;
+        for (k, e) in SOBOL_TABLE.iter().enumerate() {
+            assert!(e.degree >= prev_degree, "degree decreased at entry {k}");
+            prev_degree = e.degree;
+            let s = e.degree as usize;
+            assert!((1..=8).contains(&s), "degree {s} out of range at entry {k}");
+            counts[s] += 1;
+            for i in 0..s {
+                let m = e.m[i];
+                assert!(m % 2 == 1, "m[{i}]={m} not odd at entry {k}");
+                assert!(
+                    m < (1u32 << (i + 1)),
+                    "m[{i}]={m} >= 2^{} at entry {k}",
+                    i + 1
+                );
+            }
+            for i in s..8 {
+                assert_eq!(e.m[i], 0, "unused m[{i}] nonzero at entry {k}");
+            }
+        }
+        assert_eq!(&counts[1..=8], &[1, 1, 2, 2, 6, 6, 18, 3]);
+
+        // (degree, coeffs) pairs must be pairwise distinct.
+        for (k, e) in SOBOL_TABLE.iter().enumerate() {
+            for (l, f) in SOBOL_TABLE.iter().enumerate().skip(k + 1) {
+                assert!(
+                    !(e.degree == f.degree && e.coeffs == f.coeffs),
+                    "duplicate polynomial at entries {k} and {l}"
+                );
+            }
+        }
+    }
+
+    /// QMC estimate of `∫_{[0,1]^d} x_1 * x_2 dx` (0-indexed dims 1, 2) = 1/4.
+    /// If two dimensions collapse to the same sequence, the estimate drifts
+    /// toward `E[x^2] = 1/3` instead. (Replaces a former f≡1 test that never
+    /// inspected the generated points.)
+    #[test]
+    fn sobol_couples_dimensions() {
+        let dim = 5;
+        let n = 4096;
         let mut sob = SobolSequence::new(dim).unwrap();
         let mut pt = vec![0.0; dim];
         let mut sum = 0.0;
         for _ in 0..n {
             sob.next_point(&mut pt);
-            sum += 1.0; // f(x) = 1 for all x
+            sum += pt[1] * pt[2];
         }
         let estimate = sum / n as f64;
         assert!(
-            (estimate - 1.0).abs() < 1e-14,
-            "estimate={estimate}, expected 1.0"
+            (estimate - 0.25).abs() < 1e-3,
+            "estimate={estimate}, expected 0.25"
         );
     }
 
