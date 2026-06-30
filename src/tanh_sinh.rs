@@ -102,6 +102,7 @@ impl TanhSinh {
                 error_estimate: 0.0,
                 num_evals: 0,
                 converged: true,
+                roundoff_limited: false,
             });
         }
 
@@ -235,6 +236,7 @@ impl TanhSinh {
                         error_estimate: error,
                         num_evals: total_evals,
                         converged: true,
+                        roundoff_limited: false,
                     });
                 }
             }
@@ -255,6 +257,7 @@ impl TanhSinh {
             error_estimate: error,
             num_evals: total_evals,
             converged: false,
+            roundoff_limited: false,
         })
     }
 }

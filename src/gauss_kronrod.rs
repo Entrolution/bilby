@@ -24,8 +24,13 @@ use num_traits::Float as _;
 pub(crate) struct GKDetail {
     /// Kronrod estimate of the integral.
     pub estimate: f64,
-    /// Error estimate (Kronrod - Gauss difference, scaled).
+    /// Error estimate (Kronrod - Gauss difference, scaled), with the QUADPACK
+    /// roundoff floor applied.
     pub error: f64,
+    /// `resasc` = integral of `|f - mean|` over the panel. The adaptive
+    /// integrator uses `error == resasc` to detect an under-resolved panel
+    /// (its error saturated the resasc cap) versus a roundoff-limited one.
+    pub resasc: f64,
 }
 
 /// Identifies which embedded Gauss-Kronrod pair to use.
@@ -152,6 +157,7 @@ impl GaussKronrod {
             return GKDetail {
                 estimate: 0.0,
                 error: 0.0,
+                resasc: 0.0,
             };
         }
 
@@ -218,17 +224,23 @@ impl GaussKronrod {
         // The error is scaled against resasc — the variation of f about its
         // mean — NOT resabs (= abs_sum, ∫|f|): a constant offset is integrated
         // exactly by both rules and must not deflate the error estimate.
+        // resabs = ∫|f| (Σ wgk·|f|); resasc = ∫|f − f̄| (variation about the
+        // mean f̄ = reskh). Both come from the retained panel values in one pass.
         let reskh = kronrod_sum * 0.5;
         let mut resasc = 0.0_f64;
+        let mut resabs = 0.0_f64;
         for i in 0..n {
             let wk = self.wgk[i];
             if self.xgk[i] == 0.0 {
                 resasc += wk * (fv1[i] - reskh).abs();
+                resabs += wk * fv1[i].abs();
             } else {
                 resasc += wk * ((fv1[i] - reskh).abs() + (fv2[i] - reskh).abs());
+                resabs += wk * (fv1[i].abs() + fv2[i].abs());
             }
         }
         resasc *= half_width.abs();
+        resabs *= half_width.abs();
 
         // QUADPACK error estimate (Piessens et al. 1983, dqk15.f): scale the
         // raw Gauss-Kronrod difference δ by resasc via the (200·δ/resasc)^1.5
@@ -239,8 +251,21 @@ impl GaussKronrod {
         if resasc != 0.0 && error > 0.0 {
             error = resasc * (200.0 * error / resasc).powf(1.5).min(1.0);
         }
+        // QUADPACK roundoff floor: the error cannot be tighter than the f64
+        // rounding level of the panel, 50·εmach·resabs. Gated as in dqk15.f to
+        // avoid underflow in the product. This is a max(), so it can only raise
+        // the estimate — it cannot reintroduce the resabs-deflation bug that
+        // scaling against resasc (not resabs) fixed.
+        let epmach = f64::EPSILON;
+        if resabs > f64::MIN_POSITIVE / (50.0 * epmach) {
+            error = error.max(50.0 * epmach * resabs);
+        }
 
-        GKDetail { estimate, error }
+        GKDetail {
+            estimate,
+            error,
+            resasc,
+        }
     }
 
     /// Returns the Kronrod order.

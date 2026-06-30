@@ -127,8 +127,11 @@ impl AdaptiveIntegrator {
     /// Adaptively integrate `f` over \[a, b\].
     ///
     /// Returns a [`QuadratureResult`] with the best estimate and error bound.
-    /// If the tolerance could not be achieved within the evaluation budget,
-    /// `converged` will be `false` but the best estimate is still returned.
+    /// If the tolerance could not be achieved, `converged` will be `false` but
+    /// the best estimate is still returned; in that case
+    /// [`roundoff_limited`](QuadratureResult::roundoff_limited) distinguishes
+    /// reaching the floating-point floor (the tolerance was unachievable in
+    /// `f64`) from exhausting the evaluation budget.
     ///
     /// # Errors
     ///
@@ -150,7 +153,10 @@ impl AdaptiveIntegrator {
     ///
     /// Break points split the interval at known discontinuities or singularities.
     /// The adaptive algorithm then refines each sub-interval independently in a
-    /// global priority queue.
+    /// global priority queue. As with [`integrate`](Self::integrate), the result
+    /// reports [`converged`](QuadratureResult::converged) and
+    /// [`roundoff_limited`](QuadratureResult::roundoff_limited) so a tolerance
+    /// that is unachievable in `f64` is distinguishable from budget exhaustion.
     ///
     /// # Errors
     ///
@@ -247,7 +253,19 @@ impl AdaptiveIntegrator {
             });
         }
 
-        // Adaptive refinement loop
+        // Adaptive refinement loop. `roundoff_count` tracks consecutive panels
+        // whose bisection neither reduced the error nor moved the integral (and
+        // were not merely under-resolved) — the QUADPACK ier=2 roundoff signal;
+        // after ROUNDOFF_STALL_LIMIT of them the floating-point floor is reached.
+        // QUADPACK's dqagse accumulates iroff1/iroff2/iroff3 across the whole
+        // run (flagging at 10/20); the consecutive-with-reset policy here is a
+        // deliberately more conservative simplification — any genuinely
+        // improving bisection resets the count, so a flag requires an unbroken
+        // run of floor-level steps. `no_error_reduction` also folds in dqagse's
+        // iroff3 "error failed to decrease" case.
+        const ROUNDOFF_STALL_LIMIT: usize = 6;
+        let mut roundoff_count = 0usize;
+        let mut roundoff_limited = false;
         while !self.tolerance_met(total_estimate, total_error)
             && num_evals + 2 * evals_per_call <= self.max_evals
         {
@@ -263,6 +281,10 @@ impl AdaptiveIntegrator {
             // re-evaluating the same panel. Exact equality is orientation-
             // independent, so this also holds for reversed bounds (a > b). Its
             // error stays in total_error, so convergence is not falsely declared.
+            // A drop is itself an at-resolution-limit event: it leaves
+            // `roundoff_count` untouched (neither incremented nor reset), so the
+            // consecutive-stall run is transparent to interleaved drops — which
+            // is benign, since a drop cannot manufacture the increment conditions.
             #[allow(clippy::float_cmp)]
             if mid == worst.a || mid == worst.b {
                 continue;
@@ -272,9 +294,29 @@ impl AdaptiveIntegrator {
             let right = gk.integrate_detail(mid, worst.b, f);
             num_evals += 2 * evals_per_call;
 
+            // QUADPACK dqagse roundoff-stall detection (ier=2): a bisection that
+            // neither reduced the error (children error >= 0.99 * parent) nor
+            // moved the integral (area stable) signals the floating-point floor
+            // — UNLESS a child's error merely saturated its resasc cap
+            // (`error == resasc`), which means the panel is under-resolved, not
+            // floor-limited, and refinement must continue. Counting only
+            // consecutive such events avoids a false stall on a hard integrand.
+            let children_estimate = left.estimate + right.estimate;
+            let children_error = left.error + right.error;
+            #[allow(clippy::float_cmp)]
+            let child_saturated = left.error == left.resasc || right.error == right.resasc;
+            let no_error_reduction = children_error >= worst.error * 0.99;
+            let area_stable =
+                (children_estimate - worst.estimate).abs() <= 1.0e-5 * children_estimate.abs();
+            if no_error_reduction && area_stable && !child_saturated {
+                roundoff_count += 1;
+            } else {
+                roundoff_count = 0;
+            }
+
             // Update totals: remove old contribution, add new
-            total_estimate = total_estimate - worst.estimate + left.estimate + right.estimate;
-            total_error = total_error - worst.error + left.error + right.error;
+            total_estimate = total_estimate - worst.estimate + children_estimate;
+            total_error = total_error - worst.error + children_error;
 
             heap.push(Subinterval {
                 a: worst.a,
@@ -288,15 +330,27 @@ impl AdaptiveIntegrator {
                 estimate: right.estimate,
                 error: right.error,
             });
+
+            if roundoff_count >= ROUNDOFF_STALL_LIMIT {
+                roundoff_limited = true;
+                break;
+            }
         }
 
         let converged = self.tolerance_met(total_estimate, total_error);
+        // A final bisection can both bring the total error within tolerance and
+        // trip the roundoff counter on the same iteration (the tolerance check
+        // is at the loop head, the roundoff break at its tail). `converged`
+        // takes precedence, keeping the three outcomes mutually exclusive:
+        // converged, roundoff-limited, or budget-exhausted.
+        let roundoff_limited = roundoff_limited && !converged;
 
         Ok(QuadratureResult {
             value: total_estimate,
             error_estimate: total_error,
             num_evals,
             converged,
+            roundoff_limited,
         })
     }
 
@@ -356,7 +410,10 @@ fn build_intervals(a: f64, b: f64, breaks: &[f64]) -> Vec<(f64, f64)> {
 
 /// Adaptively integrate `f` over \[a, b\] with default settings.
 ///
-/// Uses G7-K15 with absolute and relative tolerance both set to `tol`.
+/// Uses G7-K15 with absolute and relative tolerance both set to `tol`. Inspect
+/// [`converged`](QuadratureResult::converged) and
+/// [`roundoff_limited`](QuadratureResult::roundoff_limited) on the result to
+/// tell a met tolerance from the floating-point floor or budget exhaustion.
 ///
 /// # Errors
 ///
@@ -570,7 +627,12 @@ mod tests {
 
     /// Builder with higher-order pair achieves tight tolerance.
     #[test]
-    fn builder_high_order() {
+    fn builder_high_order_roundoff_limited() {
+        // 1e-14 is tighter than the f64 roundoff floor (≈ 50·εmach·∫|sin| ≈
+        // 2.2e-14 over [0,π]), so the requested tolerance cannot be certified.
+        // The integrator must stop roundoff-limited (QUADPACK ier=2) — value
+        // accurate to machine precision, converged=false, roundoff_limited=true
+        // — rather than spinning to max_evals.
         let r = AdaptiveIntegrator::default()
             .with_pair(GKPair::G15K31)
             .with_abs_tol(1e-14)
@@ -578,8 +640,71 @@ mod tests {
             .with_max_evals(100_000)
             .integrate(0.0, core::f64::consts::PI, f64::sin)
             .unwrap();
-        assert!(r.converged, "err={}", r.error_estimate);
-        assert!((r.value - 2.0).abs() < 1e-14, "value={}", r.value);
+        assert!((r.value - 2.0).abs() < 1e-13, "value={}", r.value);
+        assert!(r.roundoff_limited, "expected roundoff_limited");
+        assert!(!r.converged, "expected not converged at unachievable 1e-14");
+        assert!(
+            r.num_evals < 5_000,
+            "did not stop early: num_evals={}",
+            r.num_evals
+        );
+    }
+
+    #[test]
+    fn smooth_integrand_roundoff_limited_at_tight_tol() {
+        // exp over [0,1] at rel_tol 1e-15 (below the floor ≈ 50·εmach·∫|exp|):
+        // the value is accurate but the tolerance is unachievable.
+        let r = AdaptiveIntegrator::default()
+            .with_abs_tol(0.0)
+            .with_rel_tol(1e-15)
+            .integrate(0.0, 1.0, f64::exp)
+            .unwrap();
+        let exact = core::f64::consts::E - 1.0;
+        assert!((r.value - exact).abs() < 1e-13, "value={}", r.value);
+        assert!(r.roundoff_limited && !r.converged);
+        assert!(r.num_evals < 5_000, "num_evals={}", r.num_evals);
+    }
+
+    #[test]
+    fn under_resolved_oscillatory_not_falsely_converged() {
+        // sin(1000x) with a budget far too small to resolve ~159 oscillations:
+        // the panels saturate their resasc cap, so the roundoff guard must NOT
+        // declare success on the (inaccurate) value — converged/roundoff_limited
+        // may only be true if the value is in fact accurate.
+        let exact = (1.0 - 1000.0_f64.cos()) / 1000.0;
+        let r = AdaptiveIntegrator::default()
+            .with_abs_tol(1e-12)
+            .with_rel_tol(1e-12)
+            .with_max_evals(2_000)
+            .integrate(0.0, 1.0, |x: f64| (1000.0 * x).sin())
+            .unwrap();
+        assert!(
+            !(r.roundoff_limited || r.converged) || (r.value - exact).abs() < 1e-6,
+            "falsely reported success: value={}, exact={exact}, conv={}, ro={}",
+            r.value,
+            r.converged,
+            r.roundoff_limited
+        );
+    }
+
+    #[test]
+    fn discontinuity_without_break_not_falsely_converged() {
+        // A jump at x=2 with no break point. The straddling panels are
+        // under-resolved (cap-saturated); success may only be reported with an
+        // accurate value.
+        let step = |x: f64| if x < 2.0 { 1.0 } else { 3.0 };
+        let r = AdaptiveIntegrator::default()
+            .with_abs_tol(1e-14)
+            .with_rel_tol(1e-14)
+            .integrate(0.0, 4.0, step)
+            .unwrap();
+        assert!(
+            !(r.roundoff_limited || r.converged) || (r.value - 8.0).abs() < 1e-6,
+            "value={}, conv={}, ro={}",
+            r.value,
+            r.converged,
+            r.roundoff_limited
+        );
     }
 
     #[test]

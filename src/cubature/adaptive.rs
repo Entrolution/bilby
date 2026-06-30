@@ -200,6 +200,7 @@ impl AdaptiveCubature {
             error_estimate: global_error,
             num_evals: total_evals,
             converged,
+            roundoff_limited: false,
         })
     }
 }

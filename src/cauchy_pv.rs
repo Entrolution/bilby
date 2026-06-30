@@ -72,6 +72,11 @@ impl CauchyPV {
     ///
     /// The singularity c must be strictly inside (a, b).
     ///
+    /// The result's [`converged`](QuadratureResult::converged) and
+    /// [`roundoff_limited`](QuadratureResult::roundoff_limited) flags are
+    /// propagated from the underlying adaptive integration of the subtracted
+    /// integrand.
+    ///
     /// # Errors
     ///
     /// Returns [`QuadratureError::DegenerateInterval`] if any bound or `c` is non-finite.
@@ -133,6 +138,7 @@ impl CauchyPV {
             error_estimate: adaptive_result.error_estimate,
             num_evals: adaptive_result.num_evals + 1, // +1 for f(c)
             converged: adaptive_result.converged,
+            roundoff_limited: adaptive_result.roundoff_limited,
         })
     }
 }
@@ -252,6 +258,36 @@ mod tests {
     fn nan_inputs() {
         assert!(pv_integrate(|x| x, f64::NAN, 1.0, 0.5, 1e-10).is_err());
         assert!(pv_integrate(|x| x, 0.0, 1.0, f64::NAN, 1e-10).is_err());
+    }
+
+    #[test]
+    fn roundoff_limited_propagates_through_wrapper() {
+        // The subtracted integrand [f(x) - f(c)]/(x - c) is smooth here (f is a
+        // polynomial), so requesting a purely relative tolerance below the f64
+        // floor drives the inner adaptive integrator to the roundoff floor. The
+        // wrapper must surface that outcome rather than reporting a spurious
+        // `converged`, while still returning the accurate principal value.
+        let exact = 0.8 + 0.09 * (7.0_f64 / 3.0).ln();
+        let result = CauchyPV::default()
+            .with_abs_tol(0.0)
+            .with_rel_tol(1e-15)
+            .with_max_evals(100_000)
+            .integrate(0.0, 1.0, 0.3, |x| x * x)
+            .unwrap();
+        assert!(
+            result.roundoff_limited,
+            "expected roundoff_limited to propagate; converged={}, error={}",
+            result.converged, result.error_estimate
+        );
+        assert!(
+            !result.converged,
+            "tolerance below the f64 floor is unachievable"
+        );
+        assert!(
+            (result.value - exact).abs() < 1e-8,
+            "value should still be accurate: value={}, expected={exact}",
+            result.value
+        );
     }
 
     #[test]
