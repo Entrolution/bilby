@@ -46,6 +46,13 @@ pub(crate) fn golub_welsch(
     }
 
     let mut d = diag.to_vec();
+    // A negative squared off-diagonal means a non-PSD (malformed) Jacobi matrix;
+    // its sqrt would be NaN and surface later as a misleading "did not converge".
+    if off_diag_sq.iter().any(|&b| b < 0.0) {
+        return Err(QuadratureError::InvalidInput(
+            "off-diagonal squared values must be non-negative (non-PSD Jacobi matrix)",
+        ));
+    }
     let mut e: Vec<f64> = off_diag_sq.iter().map(|&b| b.sqrt()).collect();
 
     // z[k] tracks the first component of the k-th eigenvector.
@@ -74,13 +81,20 @@ pub(crate) fn golub_welsch(
 /// - `diag`: diagonal elements α₀, ..., α_{n-1} (modified in place)
 /// - `off_diag_sq`: squared off-diagonal elements β₁, ..., β_{n-1}
 /// - `x0`: the prescribed node (endpoint)
-pub(crate) fn radau_modify(diag: &mut [f64], off_diag_sq: &[f64], x0: f64) {
+pub(crate) fn radau_modify(
+    diag: &mut [f64],
+    off_diag_sq: &[f64],
+    x0: f64,
+) -> Result<(), QuadratureError> {
     let n = diag.len();
     assert_eq!(off_diag_sq.len(), n.saturating_sub(1));
 
-    if n <= 1 {
+    if n == 0 {
+        return Ok(());
+    }
+    if n == 1 {
         diag[0] = x0;
-        return;
+        return Ok(());
     }
 
     // Evaluate the continued fraction r = p_{n-1}(x0) / p_{n-2}(x0)
@@ -92,15 +106,34 @@ pub(crate) fn radau_modify(diag: &mut [f64], off_diag_sq: &[f64], x0: f64) {
     // The ratio r_k = p_k / p_{k-1} satisfies:
     //   r_1 = x0 - α_0
     //   r_k = x0 - α_{k-1} - off_diag_sq[k-2] / r_{k-1}   for k >= 2
+    // A vanishing ratio r means the characteristic polynomial p_{k-1}(x0) = 0,
+    // which would divide by zero and produce a NaN/Inf diagonal that corrupts
+    // the rule; surface it as a clear error instead. For the classical families
+    // with x0 = ±1 this never occurs in practice.
+    #[allow(clippy::float_cmp)]
+    fn vanished(r: f64) -> bool {
+        r == 0.0
+    }
     let mut r = x0 - diag[0]; // r_1
     for k in 2..n {
+        if vanished(r) {
+            return Err(QuadratureError::InvalidInput(
+                "Radau modification: characteristic polynomial vanished at the endpoint",
+            ));
+        }
         r = x0 - diag[k - 1] - off_diag_sq[k - 2] / r;
+    }
+    if vanished(r) {
+        return Err(QuadratureError::InvalidInput(
+            "Radau modification: characteristic polynomial vanished at the endpoint",
+        ));
     }
     // Now r = r_{n-1} = p_{n-1}(x0) / p_{n-2}(x0)
     // Choose α_{n-1} so that p_n(x0) = 0:
     //   p_n = (x0 - α_{n-1}) p_{n-1} - β_{n-1} p_{n-2} = 0
     //   α_{n-1} = x0 - β_{n-1} / r
     diag[n - 1] = x0 - off_diag_sq[n - 2] / r;
+    Ok(())
 }
 
 /// Symmetric tridiagonal eigenvalue decomposition via the implicit QL
@@ -199,6 +232,23 @@ fn symmetric_tridiag_eig(d: &mut [f64], e: &mut [f64], z: &mut [f64]) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn negative_off_diagonal_rejected() {
+        // A negative squared off-diagonal (non-PSD Jacobi matrix) must error,
+        // not produce NaN nodes via sqrt and a misleading "did not converge".
+        assert!(golub_welsch(&[0.0, 0.0], &[-1.0], 2.0).is_err());
+    }
+
+    #[test]
+    fn radau_modify_degenerate_orders_ok() {
+        // n == 0 must not index diag[0]; n == 1 sets the single diagonal.
+        let mut empty: [f64; 0] = [];
+        assert!(radau_modify(&mut empty, &[], -1.0).is_ok());
+        let mut one = [5.0];
+        assert!(radau_modify(&mut one, &[], -1.0).is_ok());
+        assert_eq!(one[0], -1.0);
+    }
+
     /// Golub-Welsch with Legendre recurrence should recover Gauss-Legendre.
     #[test]
     fn legendre_recovery() {
@@ -242,7 +292,7 @@ mod tests {
         let off_diag_sq = vec![1.0 / 3.0]; // β_1 = 1/3 for Legendre
         let mu0 = 2.0;
 
-        radau_modify(&mut diag, &off_diag_sq, -1.0);
+        radau_modify(&mut diag, &off_diag_sq, -1.0).unwrap();
         let (nodes, weights) = golub_welsch(&diag, &off_diag_sq, mu0).unwrap();
 
         assert!((nodes[0] - (-1.0)).abs() < 1e-14);

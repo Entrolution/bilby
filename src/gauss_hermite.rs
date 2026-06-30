@@ -38,7 +38,8 @@ impl GaussHermite {
     ///
     /// # Errors
     ///
-    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
+    /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero, or
+    /// [`QuadratureError::InvalidInput`] if the eigensolver fails to converge.
     pub fn new(n: usize) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);

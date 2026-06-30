@@ -107,7 +107,8 @@ impl MonteCarloIntegrator {
     /// # Errors
     ///
     /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
-    /// different lengths, are empty, or if the number of samples is zero.
+    /// different lengths, are empty, or if the number of samples is zero, or
+    /// [`QuadratureError::DegenerateInterval`] if any bound is non-finite.
     /// For Sobol and Halton methods, also returns an error if the dimension
     /// exceeds the supported limit (40 for Sobol, 100 for Halton).
     pub fn integrate<G>(
@@ -129,6 +130,9 @@ impl MonteCarloIntegrator {
             return Err(QuadratureError::InvalidInput(
                 "number of samples must be >= 1",
             ));
+        }
+        if lower.iter().chain(upper).any(|x| !x.is_finite()) {
+            return Err(QuadratureError::DegenerateInterval);
         }
 
         let widths: Vec<f64> = (0..d).map(|j| upper[j] - lower[j]).collect();
@@ -181,7 +185,9 @@ impl MonteCarloIntegrator {
         }
 
         let variance = if n > 1 { m2 / (n - 1) as f64 } else { 0.0 };
-        let std_error = (variance / n as f64).sqrt() * volume;
+        // volume may be negative for reversed bounds; the integral value carries
+        // that sign but a standard error must not.
+        let std_error = (variance / n as f64).sqrt() * volume.abs();
 
         Ok(QuadratureResult {
             value: volume * mean,
@@ -261,7 +267,8 @@ impl MonteCarloIntegrator {
     /// # Errors
     ///
     /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
-    /// different lengths, are empty, or if the number of samples is zero.
+    /// different lengths, are empty, or if the number of samples is zero, or
+    /// [`QuadratureError::DegenerateInterval`] if any bound is non-finite.
     /// For Sobol and Halton methods, also returns an error if the dimension
     /// exceeds the supported limit (40 for Sobol, 100 for Halton).
     #[cfg(feature = "parallel")]
@@ -284,6 +291,9 @@ impl MonteCarloIntegrator {
             return Err(QuadratureError::InvalidInput(
                 "number of samples must be >= 1",
             ));
+        }
+        if lower.iter().chain(upper).any(|x| !x.is_finite()) {
+            return Err(QuadratureError::DegenerateInterval);
         }
 
         let widths: Vec<f64> = (0..d).map(|j| upper[j] - lower[j]).collect();
@@ -382,7 +392,9 @@ impl MonteCarloIntegrator {
             0.0
         };
         #[allow(clippy::cast_precision_loss)]
-        let std_error = (variance / total_n as f64).sqrt() * volume;
+        // volume may be negative for reversed bounds; the integral value carries
+        // that sign but a standard error must not.
+        let std_error = (variance / total_n as f64).sqrt() * volume.abs();
 
         Ok(QuadratureResult {
             value: volume * mean,
@@ -538,6 +550,24 @@ mod tests {
     fn constant() {
         let result = monte_carlo_integrate(|_| 1.0, &[0.0; 3], &[1.0; 3], 1000).unwrap();
         assert!((result.value - 1.0).abs() < 1e-10, "value={}", result.value);
+    }
+
+    #[test]
+    fn non_finite_bounds_rejected() {
+        assert!(monte_carlo_integrate(|_| 1.0, &[f64::NAN], &[1.0], 100).is_err());
+        assert!(monte_carlo_integrate(|_| 1.0, &[0.0], &[f64::INFINITY], 100).is_err());
+    }
+
+    #[test]
+    fn reversed_bounds_std_error_nonnegative() {
+        // Reversed bounds make the volume negative; the value may carry the
+        // sign but the reported standard error must not.
+        let r = MonteCarloIntegrator::default()
+            .with_method(MCMethod::Plain)
+            .with_samples(1000)
+            .integrate(&[1.0], &[0.0], |x| x[0])
+            .unwrap();
+        assert!(r.error_estimate >= 0.0, "std_error={}", r.error_estimate);
     }
 
     /// Integral of x over [0,1] = 0.5.

@@ -71,6 +71,10 @@ impl WeightedIntegrator {
     }
 
     /// Set the quadrature order.
+    ///
+    /// Note that `n == 0` is not rejected here (unlike [`Self::new`]); a zero
+    /// order will instead panic when [`Self::integrate`] builds the underlying
+    /// rule.
     #[must_use]
     pub fn with_order(mut self, n: usize) -> Self {
         self.order = n;
@@ -87,10 +91,10 @@ impl WeightedIntegrator {
     ///
     /// # Panics
     ///
-    /// Panics if the [`WeightFunction::Jacobi`] parameters are invalid
-    /// (`alpha <= -1` or `beta <= -1`) or if the [`WeightFunction::Laguerre`]
-    /// parameter is invalid (`alpha <= -1`), since the underlying quadrature
-    /// rule construction will fail.
+    /// Panics if the order is zero (set via [`Self::with_order`]), or if the
+    /// [`WeightFunction::Jacobi`] parameters are invalid (`alpha <= -1` or
+    /// `beta <= -1`) or the [`WeightFunction::Laguerre`] parameter is invalid
+    /// (`alpha <= -1`), since the underlying quadrature rule construction fails.
     pub fn integrate<G>(&self, f: G) -> f64
     where
         G: Fn(f64) -> f64,

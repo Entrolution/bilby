@@ -78,8 +78,8 @@ impl AdaptiveCubature {
     /// # Errors
     ///
     /// Returns [`QuadratureError::InvalidInput`] if `lower` and `upper` have
-    /// different lengths or are empty. Returns [`QuadratureError::DegenerateInterval`]
-    /// if any bound is non-finite.
+    /// different lengths, are empty, or if `lower[i] > upper[i]` on any axis.
+    /// Returns [`QuadratureError::DegenerateInterval`] if any bound is non-finite.
     pub fn integrate<G>(
         &self,
         lower: &[f64],
@@ -103,6 +103,13 @@ impl AdaptiveCubature {
         for i in 0..d {
             if !lower[i].is_finite() || !upper[i].is_finite() {
                 return Err(QuadratureError::DegenerateInterval);
+            }
+            // An inverted axis would give a negative half-width and a silently
+            // sign-flipped / garbage result; reject rather than guess intent.
+            if lower[i] > upper[i] {
+                return Err(QuadratureError::InvalidInput(
+                    "cubature requires lower[i] <= upper[i] on every axis",
+                ));
             }
         }
 
@@ -255,9 +262,10 @@ impl PartialOrd for SubRegion {
 
 impl Ord for SubRegion {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.error
-            .partial_cmp(&other.error)
-            .unwrap_or(Ordering::Equal)
+        // Total order including NaN. `partial_cmp(...).unwrap_or(Equal)` made a
+        // NaN region error compare equal to every value, breaking transitivity;
+        // total_cmp sorts a NaN error consistently to an extreme.
+        self.error.total_cmp(&other.error)
     }
 }
 
@@ -279,8 +287,8 @@ struct GMDetail {
 /// 1. Center: 1 point
 /// 2. Along each axis at ±λ₂: 2d points
 /// 3. Along each axis at ±λ₃: 2d points
-/// 4. All vertices at (±λ₄, ..., ±λ₄): 2^d points
-/// 5. All pairs of axes at (±λ₅, ±λ₅, 0, ...): 2d(d-1) points
+/// 4. All vertices at (±λ₅, ..., ±λ₅): 2^d points
+/// 5. All pairs of axes at (±λ₄, ±λ₄, 0, ...): 2d(d-1) points
 ///
 /// Total: 1 + 4d + 2^d + 2d(d-1) = 2^d + 2d² + 2d + 1 evaluations.
 fn genz_malik_eval<G>(d: usize, lower: &[f64], upper: &[f64], f: &G) -> GMDetail
@@ -429,6 +437,12 @@ mod tests {
         assert!(adaptive_cubature(|_| 1.0, &[f64::INFINITY], &[1.0], 1e-8).is_err());
         assert!(adaptive_cubature(|_| 1.0, &[0.0], &[f64::NEG_INFINITY], 1e-8).is_err());
         assert!(adaptive_cubature(|_| 1.0, &[0.0, f64::INFINITY], &[1.0, 1.0], 1e-8).is_err());
+    }
+
+    #[test]
+    fn inverted_box_rejected() {
+        // An axis with lower > upper would give a silently sign-flipped result.
+        assert!(adaptive_cubature(|_| 1.0, &[0.0, 1.0], &[1.0, 0.0], 1e-8).is_err());
     }
 
     #[test]

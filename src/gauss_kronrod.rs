@@ -156,7 +156,8 @@ impl GaussKronrod {
         }
 
         let half_width = 0.5 * (b - a);
-        let midpoint = 0.5 * (a + b);
+        // a + (b - a)/2 rather than (a + b)/2, which overflows for large |a|, |b|.
+        let midpoint = a + half_width;
         let n = self.xgk.len(); // number of (positive + center) abscissae
 
         let mut kronrod_sum = 0.0_f64;
