@@ -53,7 +53,8 @@ impl GaussJacobi {
     ///
     /// Returns [`QuadratureError::ZeroOrder`] if `n` is zero.
     /// Returns [`QuadratureError::InvalidInput`] if `alpha <= -1`, `beta <= -1`,
-    /// or either parameter is non-finite.
+    /// either parameter is non-finite, or the weight integral `μ₀` overflows
+    /// `f64` (very large `alpha`/`beta`).
     pub fn new(n: usize, alpha: f64, beta: f64) -> Result<Self, QuadratureError> {
         if n == 0 {
             return Err(QuadratureError::ZeroOrder);
@@ -105,48 +106,56 @@ fn compute_jacobi(
 ) -> Result<(Vec<f64>, Vec<f64>), QuadratureError> {
     let ab = alpha + beta;
 
-    // Diagonal: α_k = (β²-α²) / ((2k+ab)(2k+ab+2))
-    // Special handling when 2k+ab is near zero (only k=0 and ab≈0)
+    // Diagonal: a_k = (β²-α²) / ((2k+ab)(2k+ab+2)).
+    // For k = 0 the identity β+α = ab makes this (β-α)·ab / (ab(ab+2)) =
+    // (β-α)/(ab+2): pole-free for valid α,β > -1 (ab+2 > 0) and free of the
+    // β²-α² cancellation. For k ≥ 1, 2k+ab ≥ 2+ab > 0 so the denominator is
+    // strictly positive; the factored numerator (β-α)(β+α) is cancellation-free.
     let diag: Vec<f64> = (0..n)
         .map(|k| {
-            let two_k_ab = 2.0 * k as f64 + ab;
-            let denom = two_k_ab * (two_k_ab + 2.0);
-            if denom.abs() < 1e-300 {
-                // For ab=0: (β²-α²) = (β-α)(β+α) = 0 when α=β
-                // In general, use L'Hôpital: (β-α)/(ab+2) when k=0, ab→0
-                if k == 0 {
-                    (beta - alpha) / (ab + 2.0)
-                } else {
-                    0.0
-                }
+            if k == 0 {
+                (beta - alpha) / (ab + 2.0)
             } else {
-                (beta * beta - alpha * alpha) / denom
+                let two_k_ab = 2.0 * k as f64 + ab;
+                let denom = two_k_ab * (two_k_ab + 2.0);
+                (beta - alpha) * (beta + alpha) / denom
             }
         })
         .collect();
 
-    // Off-diagonal squared: β_k for k = 1, ..., n-1
-    // Special case: when k+α+β=0 and 2k+α+β-1=0 (i.e., k=1, α+β=-1),
-    // both numerator and denominator vanish. The limit is 2(1+α)(1+β).
+    // Off-diagonal squared: b_k for k = 1, ..., n-1, with
+    //   b_k = 4k(k+α)(k+β)(k+ab) / ((2k+ab)²(2k+ab+1)(2k+ab-1)).
+    // For k = 1 the (2k+ab-1) = (1+ab) denominator factor cancels the
+    // (k+ab) = (1+ab) numerator factor, giving b_1 = 4(1+α)(1+β)/((2+ab)²(3+ab)),
+    // which is regular at the α+β = -1 resonance (denominator 1·2 there) with no
+    // cancellation. For k ≥ 2, 2k+ab-1 ≥ 3+ab > 1 > 0, so the general form has a
+    // strictly positive denominator.
     let off_diag_sq: Vec<f64> = (1..n)
         .map(|k| {
-            let k = k as f64;
-            let two_k_ab = 2.0 * k + ab;
-            let denom = two_k_ab * two_k_ab * (two_k_ab + 1.0) * (two_k_ab - 1.0);
-            if denom.abs() < 1e-300 {
-                // 0/0 case: k=1, α+β=-1. Limit = 2(1+α)(1+β)
-                2.0 * (1.0 + alpha) * (1.0 + beta)
+            let kf = k as f64;
+            let two_k_ab = 2.0 * kf + ab;
+            if k == 1 {
+                4.0 * (1.0 + alpha) * (1.0 + beta) / (two_k_ab * two_k_ab * (two_k_ab + 1.0))
             } else {
-                let numer = 4.0 * k * (k + alpha) * (k + beta) * (k + ab);
+                let denom = two_k_ab * two_k_ab * (two_k_ab + 1.0) * (two_k_ab - 1.0);
+                let numer = 4.0 * kf * (kf + alpha) * (kf + beta) * (kf + ab);
                 numer / denom
             }
         })
         .collect();
 
-    // μ₀ = 2^(ab+1) Γ(α+1)Γ(β+1) / Γ(ab+2)
-    let mu0 = ((ab + 1.0) * core::f64::consts::LN_2 + ln_gamma(alpha + 1.0) + ln_gamma(beta + 1.0)
-        - ln_gamma(ab + 2.0))
-    .exp();
+    // μ₀ = 2^(ab+1) Γ(α+1)Γ(β+1) / Γ(ab+2), formed in log-space.
+    let ln_mu0 =
+        (ab + 1.0) * core::f64::consts::LN_2 + ln_gamma(alpha + 1.0) + ln_gamma(beta + 1.0)
+            - ln_gamma(ab + 2.0);
+    // Reject overflow (and the inf+inf-inf = NaN case for enormous α, β) rather
+    // than returning all-infinite weights with no diagnostic.
+    if !ln_mu0.is_finite() || ln_mu0 > f64::MAX.ln() {
+        return Err(QuadratureError::InvalidInput(
+            "Jacobi weight integral mu0 overflows f64 (alpha/beta too large)",
+        ));
+    }
+    let mu0 = ln_mu0.exp();
 
     golub_welsch(&diag, &off_diag_sq, mu0)
 }
@@ -237,6 +246,47 @@ mod tests {
             (a + b + 1.0) * core::f64::consts::LN_2 + ln_gamma(a + 1.0) + ln_gamma(b + 1.0)
                 - ln_gamma(a + b + 2.0);
         log_val.exp()
+    }
+
+    /// Near-degenerate parameters exercise the recurrence-coefficient corners.
+    /// Low moments of the Jacobi weight are independent closed-form oracles:
+    ///   m₁ = μ₀·a₀,  m₂ = μ₀·(b₁ + a₀²),  with
+    ///   a₀ = (β-α)/(α+β+2),  b₁ = 4(1+α)(1+β)/((α+β+2)²(α+β+3)).
+    /// The rule's Σwᵢxᵢ and Σwᵢxᵢ² come from the Golub-Welsch eigensolve, a
+    /// wholly separate computation. The former `(β²-α²)` diagonal and general
+    /// off-diagonal forms lost precision near α+β=0 and α+β=-1, perturbing the
+    /// nodes/weights away from these moments.
+    #[test]
+    fn near_degenerate_moments_accurate() {
+        for (alpha, beta) in [(0.5, -0.5 + 1e-10), (-0.3, -0.7 + 1e-7)] {
+            let gj = GaussJacobi::new(8, alpha, beta).unwrap();
+            let mu0 = jacobi_integral(alpha, beta);
+            let ab = alpha + beta;
+            let a0 = (beta - alpha) / (ab + 2.0);
+            let b1 = 4.0 * (1.0 + alpha) * (1.0 + beta) / ((ab + 2.0).powi(2) * (ab + 3.0));
+            let m1: f64 = gj
+                .nodes()
+                .iter()
+                .zip(gj.weights())
+                .map(|(&x, &w)| x * w)
+                .sum();
+            let m2: f64 = gj
+                .nodes()
+                .iter()
+                .zip(gj.weights())
+                .map(|(&x, &w)| x * x * w)
+                .sum();
+            assert!(
+                (m1 - mu0 * a0).abs() <= 1e-12 * mu0,
+                "m1={m1}, expected {} (a={alpha}, b={beta})",
+                mu0 * a0
+            );
+            assert!(
+                (m2 - mu0 * (b1 + a0 * a0)).abs() <= 1e-12 * mu0,
+                "m2={m2}, expected {} (a={alpha}, b={beta})",
+                mu0 * (b1 + a0 * a0)
+            );
+        }
     }
 
     #[test]
