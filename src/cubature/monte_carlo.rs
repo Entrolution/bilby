@@ -194,6 +194,7 @@ impl MonteCarloIntegrator {
             error_estimate: std_error,
             num_evals: n,
             converged: true,
+            roundoff_limited: false,
         })
     }
 
@@ -253,6 +254,7 @@ impl MonteCarloIntegrator {
             error_estimate: error,
             num_evals: n + n / 2,
             converged: true,
+            roundoff_limited: false,
         })
     }
 
@@ -401,6 +403,7 @@ impl MonteCarloIntegrator {
             error_estimate: std_error,
             num_evals: total_n,
             converged: true,
+            roundoff_limited: false,
         })
     }
 
@@ -459,6 +462,7 @@ impl MonteCarloIntegrator {
             error_estimate: error,
             num_evals: n + half,
             converged: true,
+            roundoff_limited: false,
         })
     }
 }

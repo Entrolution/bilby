@@ -123,6 +123,7 @@ impl OscillatoryIntegrator {
                 error_estimate: 0.0,
                 num_evals: 0,
                 converged: true,
+                roundoff_limited: false,
             });
         }
 
@@ -233,6 +234,7 @@ impl OscillatoryIntegrator {
             error_estimate: error,
             num_evals,
             converged,
+            roundoff_limited: false,
         })
     }
 

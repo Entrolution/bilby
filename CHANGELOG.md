@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - Unreleased
+
+### Added
+
+- Adaptive integration now detects the floating-point roundoff floor (analogous
+  to QUADPACK's `ier = 2`): when the requested tolerance is tighter than the
+  accuracy achievable in `f64`, it stops subdividing instead of spinning to
+  `max_evals`. The per-panel Gauss-Kronrod error estimate gains the QUADPACK
+  `max(50·εmach·∫|f|, error)` floor so a saturated panel reports an honest error.
+
+### Changed
+
+- **Breaking:** `QuadratureResult` gains a `roundoff_limited: bool` field (with an
+  `is_roundoff_limited()` accessor) distinguishing "stopped at the floating-point
+  floor" from "exhausted the evaluation budget"; `converged` now means strictly
+  "requested tolerance met". The struct is now `#[non_exhaustive]`, so subsequent
+  field additions will not be breaking.
+
+### Fixed
+
+- This release also rolls up a number of correctness and robustness fixes: the
+  corrupted Sobol direction-number table, the `resasc`-based Gauss-Kronrod error
+  estimate, oscillatory frequency bounding, tanh-sinh handling of reversed
+  limits, the Jacobi recurrence coefficients, adaptive and cubature resource
+  bounds, transform-endpoint guards, stricter input validation, and
+  Golub-Welsch eigensolver guards.
+
 ## [0.2.0] - 2026-03-13
 
 ### Changed
